@@ -3,7 +3,13 @@ import fs from "node:fs/promises"
 import { parser, type Node, type NodeTag } from "posthtml-parser"
 import { render } from "posthtml-render"
 
-export type PosthtmlFrameworkOptions = ComponentsPluginOptions
+export interface HTempCompileOptions {
+    componentsRoot?: string
+    componentTagPrefix?: string
+    yieldTag?: string
+    /** TODO */
+    pretty?: boolean
+}
 
 export async function compile(
     html: string,
@@ -11,7 +17,7 @@ export async function compile(
         componentsRoot = "components",
         componentTagPrefix = "x-",
         yieldTag = "yield",
-    }: PosthtmlFrameworkOptions = {},
+    }: HTempCompileOptions = {},
 ) {
     let tree = parser(html)
 
@@ -45,12 +51,15 @@ export async function compile(
     return render(tree)
 }
 
-export interface ComponentsPluginOptions {
-    componentsRoot?: string
-    componentTagPrefix?: string
-    yieldTag?: string
-    /** TODO */
-    pretty?: boolean
+export class HTempCompiler {
+    constructor(private options: HTempCompileOptions) {}
+
+    async compile(html: string, options?: Partial<HTempCompileOptions>) {
+        return compile(html, {
+            ...this.options,
+            ...options,
+        })
+    }
 }
 
 async function walk(tree: Node[], callback: WalkCallback): Promise<Node[]> {

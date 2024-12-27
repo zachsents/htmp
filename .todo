@@ -1,0 +1,8 @@
+✔ Convert tests to use parser @done (12/27/2024, 10:06:30 AM)
+☐ Throw better error for component not found (+tests)
+☐ Pretty-print option (+tests)
+☐ Pass attributes through to components (+tests)
+☐ Add expressions (+tests)
+☐ Add props to components (+tests)
+☐ Add slots (+tests)
+☐ Add stacks (with IDs to de-dupe) (+tests)
