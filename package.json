@@ -1,0 +1,19 @@
+{
+    "name": "posthtml-framework",
+    "module": "index.ts",
+    "type": "module",
+    "devDependencies": {
+        "@biomejs/biome": "1.9.4",
+        "@types/bun": "latest",
+        "posthtml": "^0.16.6",
+        "posthtml-beautify": "^0.7.0"
+    },
+    "peerDependencies": {
+        "typescript": "^5.0.0",
+        "posthtml": "^0.16.6"
+    },
+    "dependencies": {
+        "posthtml-parser": "^0.12.1",
+        "posthtml-render": "^3.0.0"
+    }
+}
