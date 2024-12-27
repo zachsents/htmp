@@ -2,12 +2,12 @@ import path from "node:path"
 import fs from "node:fs/promises"
 import { parser, type Node, type NodeTag } from "posthtml-parser"
 import { render } from "posthtml-render"
+import * as prettier from "prettier"
 
 export interface HTempCompileOptions {
     componentsRoot?: string
     componentTagPrefix?: string
     yieldTag?: string
-    /** TODO */
     pretty?: boolean
 }
 
@@ -17,6 +17,7 @@ export async function compile(
         componentsRoot = "components",
         componentTagPrefix = "x-",
         yieldTag = "yield",
+        pretty = true,
     }: HTempCompileOptions = {},
 ) {
     let tree = parser(html)
@@ -62,7 +63,12 @@ export async function compile(
         )
     })
 
-    return render(tree)
+    let renderedHtml = render(tree)
+
+    if (pretty)
+        renderedHtml = await prettier.format(renderedHtml, { parser: "html" })
+
+    return renderedHtml
 }
 
 export class HTempCompiler {

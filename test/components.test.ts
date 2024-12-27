@@ -4,6 +4,7 @@ import { HTempCompiler } from ".."
 
 const hc = new HTempCompiler({
     componentsRoot: "./test/components",
+    pretty: false,
 })
 
 test("Component inserts content", async () => {
