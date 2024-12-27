@@ -39,3 +39,11 @@ test("Multiple yields work", async () => {
     const html = await hc.compile("<x-multi-yield>MULTI</x-multi-yield>")
     expect(html.split("MULTI")).toHaveLength(3)
 })
+
+test("Component not found throws useful error", async () => {
+    const promise = hc.compile("<x-not-real />")
+    // useful message
+    expect(promise).rejects.toThrow("Component not found")
+    // names tag explicitly
+    expect(promise).rejects.toThrow("x-not-real")
+})

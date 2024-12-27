@@ -33,8 +33,22 @@ export async function compile(
                 componentsRoot,
                 `${n.tag.slice(componentTagPrefix.length).replaceAll(".", path.sep)}.html`,
             )
-            const componentContent = await fs.readFile(componentPath, "utf8")
-            componentContentCache.set(n.tag, componentContent)
+            try {
+                const componentContent = await fs.readFile(
+                    componentPath,
+                    "utf8",
+                )
+                componentContentCache.set(n.tag, componentContent)
+            } catch (err) {
+                if (
+                    typeof err === "object" &&
+                    err != null &&
+                    "code" in err &&
+                    err.code === "ENOENT"
+                )
+                    throw new Error(`Component not found: ${n.tag}`)
+                throw err
+            }
         }
 
         // pass content through to yield tag
