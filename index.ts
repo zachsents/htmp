@@ -1,6 +1,11 @@
 import path from "node:path"
 import fs from "node:fs/promises"
-import { parser, type Node, type NodeTag } from "posthtml-parser"
+import {
+    parser,
+    type Attributes,
+    type Node,
+    type NodeTag,
+} from "posthtml-parser"
 import { render } from "posthtml-render"
 import * as prettier from "prettier"
 
@@ -9,6 +14,7 @@ export interface HTempCompileOptions {
     componentTagPrefix?: string
     yieldTag?: string
     pretty?: boolean
+    attrAttribute?: string
 }
 
 export async function compile(
@@ -18,6 +24,7 @@ export async function compile(
         componentTagPrefix = "x-",
         yieldTag = "yield",
         pretty = true,
+        attrAttribute = "attr",
     }: HTempCompileOptions = {},
 ) {
     let tree = parser(html)
@@ -52,15 +59,56 @@ export async function compile(
             }
         }
 
+        let componentTree = parser(componentContentCache.get(n.tag)!)
+
+        // organize attributes into a map
+        const attrMap: Record<string, Attributes> = {}
+        for (const [k, v] of Object.entries(n.attrs ?? {})) {
+            const split = k.split(":")
+            if (split[0] === attrAttribute && split[1] && split[2]) {
+                // assign to attribute slot
+                attrMap[split[1]] ??= {}
+                attrMap[split[1]][split[2]] = v
+            } else {
+                // default attribute slot
+                attrMap[""] ??= {}
+                attrMap[""][k] = v
+            }
+        }
+
+        // pass attributes through to component
+        let foundDefaultAttributeTarget = false
+        componentTree = await walkTags(componentTree, n2 => {
+            // true aliases to default slot -- not sure if this ever happens in practice
+            if (n2.attrs?.[attrAttribute] === true) n2.attrs[attrAttribute] = ""
+
+            // now we're only willing to deal with strings
+            if (!(typeof n2.attrs?.[attrAttribute] === "string")) return n2
+
+            const attrVal = n2.attrs[attrAttribute]
+            if (attrVal === "") foundDefaultAttributeTarget = true
+            delete n2.attrs[attrAttribute]
+            if (attrMap[attrVal]) Object.assign(n2.attrs, attrMap[attrVal])
+
+            return n2
+        })
+
+        // add attributes to first tag if no default slot was found
+        if (!foundDefaultAttributeTarget && attrMap[""]) {
+            const firstTag = onlyTags(componentTree)[0]
+            if (firstTag) {
+                firstTag.attrs ??= {}
+                Object.assign(firstTag.attrs, attrMap[""])
+            }
+        }
+
         // pass content through to yield tag
-        return walkByTag(
-            parser(componentContentCache.get(n.tag)!),
-            yieldTag,
-            yieldNode => ({
-                tag: false,
-                content: n.content ?? yieldNode.content,
-            }),
-        )
+        componentTree = await walkByTag(componentTree, yieldTag, yieldNode => ({
+            tag: false,
+            content: n.content ?? yieldNode.content,
+        }))
+
+        return componentTree
     })
 
     let renderedHtml = render(tree)
@@ -82,7 +130,10 @@ export class HTempCompiler {
     }
 }
 
-async function walk(tree: Node[], callback: WalkCallback): Promise<Node[]> {
+export async function walk(
+    tree: Node[],
+    callback: WalkCallback,
+): Promise<Node[]> {
     return Promise.all(
         tree.map(async n => {
             const cbResult = await callback(n)
@@ -118,7 +169,7 @@ async function walk(tree: Node[], callback: WalkCallback): Promise<Node[]> {
     ).then(tree => tree.flat())
 }
 
-async function walkTags(
+export async function walkTags(
     tree: Node[],
     callback: (node: NodeTagWithTag) => ReturnType<WalkCallback>,
 ) {
@@ -134,7 +185,7 @@ async function walkTags(
     })
 }
 
-async function walkByTag(
+export async function walkByTag(
     tree: Node[],
     tag: string,
     callback: (node: NodeTagWithTag) => ReturnType<WalkCallback>,
@@ -146,6 +197,10 @@ function flattenFalsyTaggedNode(n: Node) {
     if (typeof n === "string" || typeof n === "number") return n
     if (!n.tag) return n.content ?? []
     return n
+}
+
+export function onlyTags(tree: Node[]) {
+    return tree.filter(n => typeof n === "object")
 }
 
 type WalkCallback = (node: Node) => Node | Node[] | Promise<Node | Node[]>

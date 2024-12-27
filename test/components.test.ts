@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
-import { parser } from "posthtml-parser"
-import { HTempCompiler } from ".."
+import { parser, type Node, type NodeTag } from "posthtml-parser"
+import { HTempCompiler, onlyTags, walkByTag, walkTags } from ".."
 
 const hc = new HTempCompiler({
     componentsRoot: "./test/components",
@@ -16,9 +16,8 @@ test("Component inserts content", async () => {
 
 test("Component can insert multiple nodes", async () => {
     const html = await hc.compile("<x-input />")
-    const tree = parser(html)
-    const tagChildren = tree.filter(n => typeof n === "object")
-    expect(tagChildren).toHaveLength(2)
+    const tree = onlyTags(parser(html))
+    expect(tree).toHaveLength(2)
 })
 
 test("Component yields content", async () => {
@@ -47,4 +46,36 @@ test("Component not found throws useful error", async () => {
     expect(promise).rejects.toThrow("Component not found")
     // names tag explicitly
     expect(promise).rejects.toThrow("x-not-real")
+})
+
+test("Attributes are passed to first tag when attr is not present", async () => {
+    const html = await hc.compile("<x-input data-test='TEST' />")
+    const tree = onlyTags(parser(html))
+
+    expect(tree[0].attrs).toHaveProperty("data-test", "TEST")
+    expect(tree[1].attrs).not.toHaveProperty("data-test")
+})
+
+test("Attributes are passed to element with attr", async () => {
+    const html = await hc.compile("<x-multi-yield data-test='TEST' />")
+    const tree = parser(html)
+
+    await walkTags(tree, n => {
+        if (n.tag === "b") expect(n.attrs).toHaveProperty("data-test", "TEST")
+        else expect(n.attrs).not.toHaveProperty("data-test")
+        return n
+    })
+})
+
+test("Attributes are passed to attribute slots", async () => {
+    const html = await hc.compile(
+        "<x-multi-yield attr:wrapper:data-test='TEST' />",
+    )
+    const tree = parser(html)
+
+    await walkTags(tree, n => {
+        if (n.tag === "div") expect(n.attrs).toHaveProperty("data-test", "TEST")
+        else expect(n.attrs).not.toHaveProperty("data-test")
+        return n
+    })
 })
