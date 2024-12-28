@@ -6,5 +6,5 @@
     ✔ Add attribute slots to pass attributes to specific tags @done (12/27/2024, 1:51:59 PM)
 ☐ Add expressions (+tests)
 ☐ Add props to components (+tests)
-☐ Add slots (+tests)
+✔ Add slots (+tests) @done (12/27/2024, 11:05:06 PM)
 ☐ Add stacks (with IDs to de-dupe) (+tests)

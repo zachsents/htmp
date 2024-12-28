@@ -1,13 +1,9 @@
-import path from "node:path"
 import fs from "node:fs/promises"
-import {
-    parser,
-    type Attributes,
-    type Node,
-    type NodeTag,
-} from "posthtml-parser"
+import path from "node:path"
+import type { Attributes, Content, Node, NodeTag } from "posthtml-parser"
 import { render } from "posthtml-render"
 import * as prettier from "prettier"
+import { parseHtml } from "./lib/parser"
 
 export interface HTempCompileOptions {
     componentsRoot?: string
@@ -15,6 +11,8 @@ export interface HTempCompileOptions {
     yieldTag?: string
     pretty?: boolean
     attrAttribute?: string
+    defineSlotTag?: string
+    fillSlotTag?: string
 }
 
 export async function compile(
@@ -25,9 +23,11 @@ export async function compile(
         yieldTag = "yield",
         pretty = true,
         attrAttribute = "attr",
+        defineSlotTag = "slot",
+        fillSlotTag = "fill",
     }: HTempCompileOptions = {},
 ) {
-    let tree = parser(html)
+    let tree = parseHtml(html)
 
     // Components
     const componentContentCache = new Map<string, string>()
@@ -59,7 +59,7 @@ export async function compile(
             }
         }
 
-        let componentTree = parser(componentContentCache.get(n.tag)!)
+        let componentTree = parseHtml(componentContentCache.get(n.tag)!)
 
         // organize attributes into a map
         const attrMap: Record<string, Attributes> = {}
@@ -102,11 +102,42 @@ export async function compile(
             }
         }
 
-        // pass content through to yield tag
-        componentTree = await walkByTag(componentTree, yieldTag, yieldNode => ({
-            tag: false,
-            content: n.content ?? yieldNode.content,
-        }))
+        // organize content into slots and yields
+        let yieldContent: Node[] | undefined
+        const slotContent: Record<string, Node[] | undefined> = {}
+        for (const contentNode of normalizeContent(n.content)) {
+            if (
+                typeof contentNode === "object" &&
+                typeof contentNode.tag === "string"
+            ) {
+                const split = contentNode.tag.split(":")
+                if (split[0] === fillSlotTag && split[1]) {
+                    slotContent[split[1]] ??= []
+                    slotContent[split[1]]!.push(
+                        ...normalizeContent(contentNode.content),
+                    )
+                    continue
+                }
+            }
+            yieldContent ??= []
+            yieldContent.push(contentNode)
+        }
+
+        // pass content through to slots and yields
+        componentTree = await walkTags(componentTree, async n2 => {
+            if (n2.tag === yieldTag)
+                return { tag: false, content: yieldContent ?? n2.content }
+
+            const split = n2.tag.split(":")
+            if (split[0] === defineSlotTag && split[1]) {
+                return {
+                    tag: false,
+                    content: slotContent[split[1]] ?? n2.content,
+                }
+            }
+
+            return n2
+        })
 
         return componentTree
     })
@@ -138,30 +169,14 @@ export async function walk(
         tree.map(async n => {
             const cbResult = await callback(n)
 
-            // flattening clean up steps
-            const halfCleaned = Array.isArray(cbResult)
-                ? cbResult.map(flattenFalsyTaggedNode)
-                : flattenFalsyTaggedNode(cbResult)
-
-            const cleaned = Array.isArray(halfCleaned)
-                ? halfCleaned.flat(2)
-                : halfCleaned
+            const cleaned = normalizeContent(cbResult)
 
             // re-run arrays
-            if (Array.isArray(cleaned)) return walk(cleaned, callback)
-
-            // skip primitives
-            if (typeof cleaned === "string" || typeof cleaned === "number")
-                return cleaned
+            if (Array.isArray(cbResult)) return walk(cleaned, callback)
 
             // recurse into content
-            if (cleaned.content != null) {
-                if (Array.isArray(cleaned.content))
-                    cleaned.content = await walk(
-                        cleaned.content.flat(),
-                        callback,
-                    )
-                else cleaned.content = await walk([cleaned.content], callback)
+            for (const n2 of onlyTags(cleaned)) {
+                n2.content = await walk(normalizeContent(n2.content), callback)
             }
 
             return cleaned
@@ -193,12 +208,24 @@ export async function walkByTag(
     return walkTags(tree, async n => (n.tag === tag ? callback(n) : n))
 }
 
-function flattenFalsyTaggedNode(n: Node) {
-    if (typeof n === "string" || typeof n === "number") return n
-    if (!n.tag) return n.content ?? []
-    return n
+/**
+ * Flattens, removes nodes with falsy tags, etc. Useful for cleaning
+ * up the various union types of posthtml-parser.
+ */
+function normalizeContent(
+    content: Node | Node[] | Content | undefined,
+): Node[] {
+    if (content == null) return []
+    return (Array.isArray(content) ? content.flat() : [content]).flatMap(n => {
+        if (typeof n === "object" && !n.tag)
+            return normalizeContent(n.content ?? [])
+        return n
+    })
 }
 
+/**
+ * Simple filter to ignore non-tag nodes. Doesn't traverse.
+ */
 export function onlyTags(tree: Node[]) {
     return tree.filter(n => typeof n === "object")
 }
