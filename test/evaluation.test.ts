@@ -73,3 +73,30 @@ test("Evaluation happens before merging attributes", async () => {
     const tree = onlyTags(parseHtml(html))
     expect(tree[0].attrs).toHaveProperty("data-test", "8")
 })
+
+test("Dynamic tags are computed", async () => {
+    const html = await hc.compile("<dynamic tag=\"'div'\" />")
+    expect(html).toBe("<div></div>")
+})
+
+test("Nullish tag evaluations are removed", async () => {
+    const html = await hc.compile('<dynamic tag="null">TEST</dynamic>')
+    expect(html).toBe("TEST")
+})
+
+test("False tag evaluations are removed", async () => {
+    const html = await hc.compile('<dynamic tag="false">TEST</dynamic>')
+    expect(html).toBe("TEST")
+})
+
+test("Other attributes are preserved on dynamic tags", async () => {
+    const html = await hc.compile("<dynamic tag=\"'div'\" class='test' />")
+    expect(html).toBe('<div class="test"></div>')
+})
+
+test("Dynamic tag evaluations cannot be invalid values", async () => {
+    const promise1 = hc.compile("<dynamic tag='1' />")
+    expect(promise1).rejects.toBeDefined()
+    const promise2 = hc.compile("<dynamic tag='tag with space' />")
+    expect(promise2).rejects.toBeDefined()
+})

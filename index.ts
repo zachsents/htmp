@@ -69,6 +69,11 @@ export interface HTempCompileOptions {
      * Defaults to `/%%(.+?)%%/g`
      */
     evaluateContentPattern?: RegExp
+    /**
+     * The tag used for dynamic content.
+     * Defaults to "dynamic"
+     */
+    dynamicTag?: string
 }
 
 export async function compile(
@@ -86,6 +91,7 @@ export async function compile(
         pushTag = "push",
         evaluateAttributePrefix = "eval",
         evaluateContentPattern = /%%(.+?)%%/g,
+        dynamicTag = "dynamic",
     }: HTempCompileOptions = {},
 ) {
     let tree = parseHtml(html)
@@ -106,8 +112,9 @@ export async function compile(
     const evaluationOptions = {
         evaluateAttributePrefix,
         evaluateContentPattern,
+        dynamicTag,
     }
-    tree = await walk(tree, n => expandEvaluations(n, evaluationOptions))
+    tree = await expandEvaluations(tree, evaluationOptions)
 
     // Components
     tree = await walkTags(tree, async n => {
@@ -143,8 +150,9 @@ export async function compile(
         let componentTree = parseHtml(componentContentCache.get(componentName)!)
 
         // do evaluations
-        componentTree = await walk(componentTree, n =>
-            expandEvaluations(n, evaluationOptions),
+        componentTree = await expandEvaluations(
+            componentTree,
+            evaluationOptions,
         )
 
         // organize attributes into a map
@@ -286,7 +294,7 @@ export class HTempCompiler {
 }
 
 /**
- * Expands all evaluations for a single node.
+ * Expands all evaluations for the tree.
  *
  * We have this as a separate function because it'll need
  * to be done both on the initial tree and on loaded
@@ -294,46 +302,79 @@ export class HTempCompiler {
  * to accomodate custom merge strategies.
  */
 async function expandEvaluations(
-    node: Node,
+    tree: Node[],
     options: Required<
         Pick<
             HTempCompileOptions,
-            "evaluateAttributePrefix" | "evaluateContentPattern"
+            "evaluateAttributePrefix" | "evaluateContentPattern" | "dynamicTag"
         >
     >,
-) {
-    // evaluate attributes
-    if (isTagNode(node) && typeof node.tag === "string" && node.attrs) {
-        for (const [k, v] of Object.entries(node.attrs)) {
-            if (typeof v !== "string") continue
+): Promise<Node[]> {
+    let newTree = await walk(tree, n => {
+        // evaluate attributes
+        if (isTagNode(n) && typeof n.tag === "string" && n.attrs) {
+            for (const [k, v] of Object.entries(n.attrs)) {
+                if (typeof v !== "string") continue
 
-            const { isMatch, segments } = colonMatch(2, k)
-            if (!isMatch || segments[0] !== options.evaluateAttributePrefix)
-                continue
+                const { isMatch, segments } = colonMatch(2, k)
+                if (!isMatch || segments[0] !== options.evaluateAttributePrefix)
+                    continue
 
-            delete node.attrs[k]
-            const evaluatedResult = indirectEval(v)
+                delete n.attrs[k]
+                const evaluatedResult = indirectEval(v)
 
-            // skip if result is false or null
-            if (evaluatedResult === false || evaluatedResult == null) continue
+                // skip if result is false or null
+                if (evaluatedResult === false || evaluatedResult == null)
+                    continue
 
-            // true is an empty but included attribute
-            if (evaluatedResult === true) node.attrs[segments[1]] = true
-            // otherwise, just try to make it a string
-            else node.attrs[segments[1]] = `${evaluatedResult}`
+                // true is an empty but included attribute
+                if (evaluatedResult === true) n.attrs[segments[1]] = true
+                // otherwise, just try to make it a string
+                else n.attrs[segments[1]] = `${evaluatedResult}`
+            }
         }
-    }
 
-    if (typeof node !== "string") return node
+        if (typeof n !== "string") return n
 
-    // evaluate content
-    return node.replaceAll(options.evaluateContentPattern, (_, code) => {
-        const evaluatedResult = indirectEval(code)
-        // skip if result is false or null
-        if (evaluatedResult === false || evaluatedResult == null) return ""
-        // otherwise, just try to make it a string
-        return `${evaluatedResult}`
+        // evaluate content
+        return n.replaceAll(options.evaluateContentPattern, (_, code) => {
+            const evaluatedResult = indirectEval(code)
+            // skip if result is false or null
+            if (evaluatedResult === false || evaluatedResult == null) return ""
+            // otherwise, just try to make it a string
+            return `${evaluatedResult}`
+        })
     })
+
+    // other evaluations
+    newTree = await walkTags(newTree, n => {
+        if (n.tag === options.dynamicTag) {
+            if (!n.attrs?.tag || typeof n.attrs.tag !== "string")
+                throw new Error("Dynamic tag must have a tag attribute")
+
+            const evaluatedResult = indirectEval(n.attrs.tag)
+
+            if (evaluatedResult == null || evaluatedResult === false)
+                return { tag: false, content: n.content }
+
+            if (
+                typeof evaluatedResult === "string" &&
+                /^\S+$/.test(evaluatedResult)
+            ) {
+                n.tag = evaluatedResult
+                delete n.attrs.tag
+                return n
+            }
+
+            throw new Error(
+                "Dynamic tag tag attribute must evaluate to a string (with no spaces), nullish, or false.",
+            )
+        }
+
+        return n
+    })
+
+    return newTree
 }
 
 /**
