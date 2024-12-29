@@ -1,7 +1,6 @@
-import { expect, test } from "bun:test"
-import { parser } from "posthtml-parser"
-import { HTempCompiler, onlyTags, walkByTag, walkTags } from ".."
+import { describe, expect, test } from "bun:test"
 import { render } from "posthtml-render"
+import { HTempCompiler, onlyTags, walkByTag, walkTags } from ".."
 import { parseHtml } from "../lib/parser"
 
 const hc = new HTempCompiler({
@@ -9,36 +8,81 @@ const hc = new HTempCompiler({
     pretty: false,
 })
 
-test("Component inserts content", async () => {
+test("Components are loaded from files", async () => {
     const html = await hc.compile("<x-box />")
-    const tree = parseHtml(html)
+    expect(html).toBe("<div></div>")
+})
 
-    expect(tree).toEqual([{ tag: "div" }])
+test("Components are loaded from override object", async () => {
+    const html = await hc.compile("<x-test />", {
+        components: {
+            test: "<p></p>",
+        },
+    })
+    expect(html).toBe("<p></p>")
+})
+
+test("Components from override take precedence over files", async () => {
+    const html = await hc.compile("<x-box />", {
+        components: {
+            box: "<p></p>",
+        },
+    })
+    expect(html).toBe("<p></p>")
 })
 
 test("Component can insert multiple nodes", async () => {
-    const html = await hc.compile("<x-input />")
+    const html = await hc.compile("<x-test />", {
+        components: {
+            test: "<p></p><div></div><section></section>",
+        },
+    })
     const tree = onlyTags(parseHtml(html))
-    expect(tree).toHaveLength(2)
+    expect(tree).toHaveLength(3)
 })
 
 test("Component yields content", async () => {
-    const html = await hc.compile("<x-button>TEST</x-button>")
+    const html = await hc.compile("<x-test>TEST</x-test>", {
+        components: {
+            test: "<p><yield /></p>",
+        },
+    })
     expect(html).toContain("TEST")
 })
 
 test("Empty tag yields default content", async () => {
-    const html = await hc.compile("<x-button></x-button>")
-    expect(html).toContain("DEFAULT BUTTON")
+    const html = await hc.compile("<x-test></x-test>", {
+        components: {
+            test: "<p><yield>DEFAULT</yield></p>",
+        },
+    })
+    expect(html).toContain("DEFAULT")
 })
 
 test("Self-closing tag yields default content", async () => {
-    const html = await hc.compile("<x-button />")
-    expect(html).toContain("DEFAULT BUTTON")
+    const html = await hc.compile("<x-test />", {
+        components: {
+            test: "<p><yield>DEFAULT</yield></p>",
+        },
+    })
+    expect(html).toContain("DEFAULT")
+})
+
+test("Yield with default content ignores default content", async () => {
+    const html = await hc.compile("<x-test>TEST</x-test>", {
+        components: {
+            test: "<p><yield>DEFAULT</yield></p>",
+        },
+    })
+    expect(html).toContain("TEST")
 })
 
 test("Multiple yields work", async () => {
-    const html = await hc.compile("<x-multi-yield>MULTI</x-multi-yield>")
+    const html = await hc.compile("<x-test>MULTI</x-test>", {
+        components: {
+            test: "<p><yield /></p><small><yield /></small>",
+        },
+    })
     expect(html.split("MULTI")).toHaveLength(3)
 })
 
@@ -51,7 +95,23 @@ test("Component not found throws useful error", async () => {
 })
 
 test("Attributes are passed to first tag when attr is not present", async () => {
-    const html = await hc.compile("<x-input data-test='TEST' />")
+    const html = await hc.compile("<x-test data-test='TEST' />", {
+        components: {
+            test: "<p></p><p></p>",
+        },
+    })
+    const tree = onlyTags(parseHtml(html))
+
+    expect(tree[0].attrs).toHaveProperty("data-test", "TEST")
+    expect(tree[1].attrs).not.toHaveProperty("data-test")
+})
+
+test("Text nodes are ignored when passing attributes in default manner", async () => {
+    const html = await hc.compile("<x-test data-test='TEST' />", {
+        components: {
+            test: "Hello<p></p><p></p>",
+        },
+    })
     const tree = onlyTags(parseHtml(html))
 
     expect(tree[0].attrs).toHaveProperty("data-test", "TEST")
@@ -59,34 +119,51 @@ test("Attributes are passed to first tag when attr is not present", async () => 
 })
 
 test("Attributes are passed to element with attr", async () => {
-    const html = await hc.compile("<x-multi-yield data-test='TEST' />")
-    const tree = parseHtml(html)
-
-    await walkTags(tree, n => {
-        if (n.tag === "b") expect(n.attrs).toHaveProperty("data-test", "TEST")
-        else expect(n.attrs).not.toHaveProperty("data-test")
-        return n
+    const html = await hc.compile("<x-test data-test='TEST' />", {
+        components: {
+            test: "<p></p><p attr></p>",
+        },
     })
+    const tree = onlyTags(parseHtml(html))
+
+    expect(tree[0].attrs).not.toHaveProperty("data-test")
+    expect(tree[1].attrs).toHaveProperty("data-test", "TEST")
 })
 
 test("Attributes are passed to attribute slots", async () => {
-    const html = await hc.compile(
-        "<x-multi-yield attr:wrapper:data-test='TEST' />",
-    )
+    const html = await hc.compile("<x-test attr:inner:data-test='TEST' />", {
+        components: {
+            test: "<div><p attr='inner'></p></div>",
+        },
+    })
     const tree = parseHtml(html)
 
-    await walkTags(tree, n => {
-        if (n.tag === "div") expect(n.attrs).toHaveProperty("data-test", "TEST")
-        else expect(n.attrs).not.toHaveProperty("data-test")
+    await walkByTag(tree, "div", n => {
+        expect(n.attrs).not.toHaveProperty("data-test")
+        return n
+    })
+
+    await walkByTag(tree, "p", n => {
+        expect(n.attrs).toHaveProperty("data-test", "TEST")
         return n
     })
 })
 
 test("Slots work", async () => {
-    const html = await hc.compile(`<x-slot-test>
-        <fill:paragraph>PARAGRAPH</fill:paragraph>
-        <fill:foot>FOOTER</fill:foot>
-    </x-slot-test>`)
+    const html = await hc.compile(
+        `<x-test>
+            <fill:paragraph>PARAGRAPH</fill:paragraph>
+            <fill:foot>FOOTER</fill:foot>
+        </x-test>`,
+        {
+            components: {
+                test: `<div>
+                    <p><slot:paragraph /></p>
+                    <footer><slot:foot /></footer>
+                </div>`,
+            },
+        },
+    )
     const tree = parseHtml(html)
 
     await walkByTag(tree, "p", n => {
@@ -100,4 +177,8 @@ test("Slots work", async () => {
         expect(snippet).toBe("<footer>FOOTER</footer>")
         return n
     })
+})
+
+test.todo("Push tag gets pushed to stack", async () => {
+    // const html = await hc.compile(``)
 })

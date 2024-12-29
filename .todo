@@ -8,3 +8,4 @@
 ☐ Add props to components (+tests)
 ✔ Add slots (+tests) @done (12/27/2024, 11:05:06 PM)
 ☐ Add stacks (with IDs to de-dupe) (+tests)
+✔ Add option to pass components along in an object (+tests) @done (12/28/2024, 9:34:26 PM)

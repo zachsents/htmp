@@ -51,6 +51,7 @@ export interface HTempCompileOptions {
 export async function compile(
     html: string,
     {
+        components: componentsOverride = {},
         componentsRoot = "./components",
         componentTagPrefix = "x-",
         yieldTag = "yield",
@@ -62,24 +63,30 @@ export async function compile(
 ) {
     let tree = parseHtml(html)
 
+    // initialize component cache
+    const componentContentCache = new Map<string, string>(
+        Object.entries(componentsOverride),
+    )
+
     // Components
-    const componentContentCache = new Map<string, string>()
     tree = await walkTags(tree, async n => {
         // not a component -- skip
         if (!n.tag.startsWith(componentTagPrefix)) return n
 
+        const componentName = n.tag.slice(componentTagPrefix.length)
+
         // component -- load, parse, and expand
-        if (!componentContentCache.has(n.tag)) {
+        if (!componentContentCache.has(componentName)) {
             const componentPath = path.join(
                 componentsRoot,
-                `${n.tag.slice(componentTagPrefix.length).replaceAll(".", path.sep)}.html`,
+                `${componentName.replaceAll(".", path.sep)}.html`,
             )
             try {
                 const componentContent = await fs.readFile(
                     componentPath,
                     "utf8",
                 )
-                componentContentCache.set(n.tag, componentContent)
+                componentContentCache.set(componentName, componentContent)
             } catch (err) {
                 if (
                     typeof err === "object" &&
@@ -92,7 +99,7 @@ export async function compile(
             }
         }
 
-        let componentTree = parseHtml(componentContentCache.get(n.tag)!)
+        let componentTree = parseHtml(componentContentCache.get(componentName)!)
 
         // organize attributes into a map
         const attrMap: Record<string, Attributes> = {}
