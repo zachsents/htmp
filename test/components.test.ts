@@ -22,6 +22,19 @@ test("Components are loaded from override object", async () => {
     expect(html).toBe("<p></p>")
 })
 
+test.todo(
+    "Components loaded from override object are converted from camelCase to kebab-case",
+    async () => {
+        const promise = hc.compile("<x-hello-world /><x-test-2 />", {
+            components: {
+                helloWorld: "<p></p>",
+                test2: "<p></p>",
+            },
+        })
+        expect(promise).resolves.not.toThrow()
+    },
+)
+
 test("Components from override take precedence over files", async () => {
     const html = await hc.compile("<x-box />", {
         components: {
@@ -179,6 +192,32 @@ test("Slots work", async () => {
     })
 })
 
-test.todo("Push tag gets pushed to stack", async () => {
-    // const html = await hc.compile(``)
+test("Push tag gets pushed to stack", async () => {
+    const html = await hc.compile(
+        "<div><x-test /></div><stack name='test-stack' />",
+        {
+            components: {
+                test: "<push stack='test-stack'><p>PUSHED</p></push>",
+            },
+        },
+    )
+    const tree = onlyTags(parseHtml(html))
+    expect(render(tree[1])).toBe("<p>PUSHED</p>")
+})
+
+test("Elements pushed to stack are de-duped by id", async () => {
+    const html = await hc.compile(
+        `<div><x-a /><x-b /></div>
+        <div><stack name='test-stack' /></div>`,
+        {
+            components: {
+                a: "<push stack='test-stack'><p id='p-in-test-stack'>PUSHED FROM A</p></push>",
+                b: "<push stack='test-stack'><p id='p-in-test-stack'>PUSHED FROM B</p></push>",
+            },
+        },
+    )
+    const tree = onlyTags(parseHtml(html))
+    const snippet = render(tree[1])
+    expect(snippet).toContain("PUSHED FROM A")
+    expect(snippet).not.toContain("PUSHED FROM B")
 })

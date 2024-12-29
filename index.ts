@@ -46,6 +46,16 @@ export interface HTempCompileOptions {
      * @default "fill"
      */
     fillSlotTag?: string
+    /**
+     * The tag to use for defining stacks.
+     * @default "stack"
+     */
+    stackTag?: string
+    /**
+     * The tag to use for pushing to stacks.
+     * @default "push"
+     */
+    pushTag?: string
 }
 
 export async function compile(
@@ -59,6 +69,8 @@ export async function compile(
         attrAttribute = "attr",
         defineSlotTag = "slot",
         fillSlotTag = "fill",
+        stackTag = "stack",
+        pushTag = "push",
     }: HTempCompileOptions = {},
 ) {
     let tree = parseHtml(html)
@@ -146,10 +158,7 @@ export async function compile(
         let yieldContent: Node[] | undefined
         const slotContent: Record<string, Node[] | undefined> = {}
         for (const contentNode of normalizeContent(n.content)) {
-            if (
-                typeof contentNode === "object" &&
-                typeof contentNode.tag === "string"
-            ) {
+            if (isTagNode(contentNode) && typeof contentNode.tag === "string") {
                 const split = contentNode.tag.split(":")
                 if (split[0] === fillSlotTag && split[1]) {
                     slotContent[split[1]] ??= []
@@ -182,6 +191,46 @@ export async function compile(
         return componentTree
     })
 
+    // Stacks
+    const stackContent: Record<string, Node[]> = {}
+
+    // find all pushes first
+    tree = await walkByTag(tree, pushTag, n => {
+        const stackName = n.attrs?.stack
+        if (!stackName) throw new Error("Push tag must have a stack attribute")
+        if (typeof stackName !== "string")
+            throw new Error("Push tag stack attribute must be a string")
+
+        stackContent[stackName] ??= []
+
+        // make set of ids in stack -- optimization over checking every iteration...i think
+        const idSet = stackContent[stackName].reduce((set, n) => {
+            if (hasStringAttribute(n, "id") && n.attrs.id) set.add(n.attrs.id)
+            return set
+        }, new Set<string>())
+
+        // only push content if the id is not already in the stack
+        for (const n2 of normalizeContent(n.content)) {
+            if (hasStringAttribute(n2, "id") && n2.attrs.id) {
+                if (idSet.has(n2.attrs.id)) continue
+                idSet.add(n2.attrs.id)
+            }
+            stackContent[stackName].push(n2)
+        }
+
+        return []
+    })
+
+    // then insert the pushed content into the stack
+    tree = await walkByTag(tree, stackTag, n => {
+        const stackName = n.attrs?.name
+        if (!stackName) throw new Error("Stack tag must have a name attribute")
+        if (typeof stackName !== "string")
+            throw new Error("Stack tag name attribute must be a string")
+
+        return stackContent[stackName] ?? []
+    })
+
     let renderedHtml = render(tree)
 
     if (pretty)
@@ -201,6 +250,9 @@ export class HTempCompiler {
     }
 }
 
+/**
+ * Walks the tree, executing the callback on each node.
+ */
 export async function walk(
     tree: Node[],
     callback: WalkCallback,
@@ -224,22 +276,25 @@ export async function walk(
     ).then(tree => tree.flat())
 }
 
+/**
+ * Walks the tree, only executing the callback on nodes that
+ * are tags.
+ */
 export async function walkTags(
     tree: Node[],
     callback: (node: NodeTagWithTag) => ReturnType<WalkCallback>,
 ) {
     return walk(tree, async n => {
-        if (
-            typeof n === "string" ||
-            typeof n === "number" ||
-            !n.tag ||
-            typeof n.tag !== "string"
-        )
-            return n
-        return callback(n as NodeTagWithTag)
+        if (isTagNode(n) && typeof n.tag === "string" && n.tag)
+            return callback(n as NodeTagWithTag)
+        return n
     })
 }
 
+/**
+ * Walks the tree, only executing the callback on nodes with
+ * the specified tag.
+ */
 export async function walkByTag(
     tree: Node[],
     tag: string,
@@ -257,8 +312,7 @@ function normalizeContent(
 ): Node[] {
     if (content == null) return []
     return (Array.isArray(content) ? content.flat() : [content]).flatMap(n => {
-        if (typeof n === "object" && !n.tag)
-            return normalizeContent(n.content ?? [])
+        if (isTagNode(n) && !n.tag) return normalizeContent(n.content ?? [])
         return n
     })
 }
@@ -267,7 +321,30 @@ function normalizeContent(
  * Simple filter to ignore non-tag nodes. Doesn't traverse.
  */
 export function onlyTags(tree: Node[]) {
-    return tree.filter(n => typeof n === "object")
+    return tree.filter(isTagNode)
+}
+
+/**
+ * Checks if a node is a tag node. Adds some extra type
+ * safety.
+ */
+export function isTagNode(node: Node): node is NodeTag {
+    return typeof node === "object"
+}
+
+/**
+ * Checks if a node has a string attribute. Adds some extra
+ * type safety.
+ */
+export function hasStringAttribute<Attr extends string>(
+    node: Node,
+    attr: Attr,
+): node is Omit<NodeTag, "attrs"> & {
+    attrs: {
+        [k in Attr]: string
+    }
+} {
+    return isTagNode(node) && typeof node.attrs?.[attr] === "string"
 }
 
 type WalkCallback = (node: Node) => Node | Node[] | Promise<Node | Node[]>
