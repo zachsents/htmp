@@ -22,18 +22,15 @@ test("Components are loaded from override object", async () => {
     expect(html).toBe("<p></p>")
 })
 
-test.todo(
-    "Components loaded from override object are converted from camelCase to kebab-case",
-    async () => {
-        const promise = hc.compile("<x-hello-world /><x-test-2 />", {
-            components: {
-                helloWorld: "<p></p>",
-                test2: "<p></p>",
-            },
-        })
-        expect(promise).resolves.not.toThrow()
-    },
-)
+test("Components loaded from override object are converted from camelCase to kebab-case", async () => {
+    const promise = hc.compile("<x-hello-world /><x-test-2 />", {
+        components: {
+            helloWorld: "<p></p>",
+            test2: "<p></p>",
+        },
+    })
+    expect(promise).resolves.toBeDefined()
+})
 
 test("Components from override take precedence over files", async () => {
     const html = await hc.compile("<x-box />", {

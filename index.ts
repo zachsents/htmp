@@ -4,6 +4,7 @@ import type { Attributes, Content, Node, NodeTag } from "posthtml-parser"
 import { render } from "posthtml-render"
 import * as prettier from "prettier"
 import { parseHtml } from "./lib/parser"
+import { kMaxLength } from "node:buffer"
 
 export interface HTempCompileOptions {
     /**
@@ -77,7 +78,14 @@ export async function compile(
 
     // initialize component cache
     const componentContentCache = new Map<string, string>(
-        Object.entries(componentsOverride),
+        Object.entries(componentsOverride).map(([k, v]) => {
+            const kebabKey =
+                k
+                    .match(/[a-z]+|[A-Z][a-z]+|[A-Z]+|\d+/g)
+                    ?.join("-")
+                    .toLowerCase() ?? ""
+            return [kebabKey, v] as const
+        }),
     )
 
     // Components
