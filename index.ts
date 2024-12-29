@@ -124,11 +124,11 @@ export async function compile(
         // organize attributes into a map
         const attrMap: Record<string, Attributes> = {}
         for (const [k, v] of Object.entries(n.attrs ?? {})) {
-            const split = k.split(":")
-            if (split[0] === attrAttribute && split[1] && split[2]) {
+            const { isMatch, segments } = colonMatch(3, k)
+            if (isMatch && segments[0] === attrAttribute) {
                 // assign to attribute slot
-                attrMap[split[1]] ??= {}
-                attrMap[split[1]][split[2]] = v
+                attrMap[segments[1]] ??= {}
+                attrMap[segments[1]][segments[2]] = v
             } else {
                 // default attribute slot
                 attrMap[""] ??= {}
@@ -167,10 +167,11 @@ export async function compile(
         const slotContent: Record<string, Node[] | undefined> = {}
         for (const contentNode of normalizeContent(n.content)) {
             if (isTagNode(contentNode) && typeof contentNode.tag === "string") {
-                const split = contentNode.tag.split(":")
-                if (split[0] === fillSlotTag && split[1]) {
-                    slotContent[split[1]] ??= []
-                    slotContent[split[1]]!.push(
+                const { isMatch, segments } = colonMatch(2, contentNode.tag)
+
+                if (isMatch && segments[0] === fillSlotTag) {
+                    slotContent[segments[1]] ??= []
+                    slotContent[segments[1]]!.push(
                         ...normalizeContent(contentNode.content),
                     )
                     continue
@@ -185,11 +186,11 @@ export async function compile(
             if (n2.tag === yieldTag)
                 return { tag: false, content: yieldContent ?? n2.content }
 
-            const split = n2.tag.split(":")
-            if (split[0] === defineSlotTag && split[1]) {
+            const { isMatch, segments } = colonMatch(2, n2.tag)
+            if (isMatch && segments[0] === defineSlotTag) {
                 return {
                     tag: false,
-                    content: slotContent[split[1]] ?? n2.content,
+                    content: slotContent[segments[1]] ?? n2.content,
                 }
             }
 
@@ -353,6 +354,28 @@ export function hasStringAttribute<Attr extends string>(
     }
 } {
     return isTagNode(node) && typeof node.attrs?.[attr] === "string"
+}
+
+/**
+ * Small helper to match segments split by colons. Need
+ * special handling since some colons are used in the
+ * attribute syntax.
+ */
+function colonMatch(
+    numSegments: number,
+    str: string,
+): { isMatch: boolean; segments: string[] } {
+    const pattern = new RegExp(`^${"(.+?):".repeat(numSegments - 1)}(.+)$`)
+    const match = str.match(pattern)
+    return match
+        ? {
+              isMatch: true,
+              segments: match.slice(1),
+          }
+        : {
+              isMatch: false,
+              segments: [],
+          }
 }
 
 type WalkCallback = (node: Node) => Node | Node[] | Promise<Node | Node[]>

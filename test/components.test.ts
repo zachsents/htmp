@@ -159,6 +159,20 @@ test("Attributes are passed to attribute slots", async () => {
     })
 })
 
+test("Attributes passed to attribute slots can have colons in them", async () => {
+    const html = await hc.compile("<x-test attr:inner::class='TEST' />", {
+        components: {
+            test: "<div><p attr='inner'></p></div>",
+        },
+    })
+    const tree = parseHtml(html)
+
+    await walkByTag(tree, "p", n => {
+        expect(n.attrs).toHaveProperty(":class", "TEST")
+        return n
+    })
+})
+
 test("Slots work", async () => {
     const html = await hc.compile(
         `<x-test>
