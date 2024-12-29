@@ -9,10 +9,11 @@
 ✔ Add option to pass components along in an object (+tests) @done (12/28/2024, 9:34:26 PM)
 ✔ Convert colon-splitting to use regex to support more complex names @done (12/29/2024, 11:25:18 AM)
 ☐ Dynamic tag names (+tests)
-☐ Add expressions (+tests)
-    ☐ Dynamic attributes (+tests)
-    ☐ Dynamic content (+tests)
+✔ Add expressions (+tests) @done (12/29/2024, 1:21:25 PM)
+    ✔ Dynamic attributes (+tests) @done (12/29/2024, 1:21:21 PM)
+    ✔ Dynamic content (+tests) @done (12/29/2024, 1:21:22 PM)
 ☐ Add props to components (+tests)
 ☐ Optional wrapper tag
 ☐ Conditional tags
 ☐ Loop tags
+☐ Make class and style attributes merge differently

@@ -4,7 +4,6 @@ import type { Attributes, Content, Node, NodeTag } from "posthtml-parser"
 import { render } from "posthtml-render"
 import * as prettier from "prettier"
 import { parseHtml } from "./lib/parser"
-import { kMaxLength } from "node:buffer"
 
 export interface HTempCompileOptions {
     /**
@@ -14,49 +13,62 @@ export interface HTempCompileOptions {
     components?: Record<string, string>
     /**
      * Where to look for components, which are just .html files.
-     * @default "./components"
+     * Defaults to "./components"
      */
     componentsRoot?: string
     /**
      * The prefix to use for component tags.
-     * @default "x-"
+     * Defaults to "x-"
      */
     componentTagPrefix?: string
     /**
      * The tag to use for yields.
-     * @default "yield"
+     * Defaults to "yield"
      */
     yieldTag?: string
     /**
      * Whether to pretty-print the output. Uses prettier.
-     * @default true
+     * Defaults to true
      */
     pretty?: boolean
     /**
      * The attribute to use for passing attributes to components.
-     * @default "attr"
+     * Defaults to "attr"
      */
     attrAttribute?: string
     /**
      * The tag to use for defining slots.
-     * @default "slot"
+     * Defaults to "slot"
      */
     defineSlotTag?: string
     /**
      * The tag to use for filling slots.
-     * @default "fill"
+     * Defaults to "fill"
      */
     fillSlotTag?: string
     /**
      * The tag to use for defining stacks.
-     * @default "stack"
+     * Defaults to "stack"
      */
     stackTag?: string
     /**
      * The tag to use for pushing to stacks.
-     * @default "push"
+     * Defaults to "push"
      */
     pushTag?: string
+    /**
+     * The prefix for attributes that will be evaluated as
+     * JavaScript.
+     * Defaults to "eval"
+     */
+    evaluateAttributePrefix?: string
+    /**
+     * The pattern used to select content for evaluation.
+     * The JS code should be contained in the first capture
+     * group.
+     * Defaults to `/%%(.+?)%%/g`
+     */
+    evaluateContentPattern?: RegExp
 }
 
 export async function compile(
@@ -72,6 +84,8 @@ export async function compile(
         fillSlotTag = "fill",
         stackTag = "stack",
         pushTag = "push",
+        evaluateAttributePrefix = "eval",
+        evaluateContentPattern = /%%(.+?)%%/g,
     }: HTempCompileOptions = {},
 ) {
     let tree = parseHtml(html)
@@ -87,6 +101,13 @@ export async function compile(
             return [kebabKey, v] as const
         }),
     )
+
+    // Do initial evaluations
+    const evaluationOptions = {
+        evaluateAttributePrefix,
+        evaluateContentPattern,
+    }
+    tree = await walk(tree, n => expandEvaluations(n, evaluationOptions))
 
     // Components
     tree = await walkTags(tree, async n => {
@@ -120,6 +141,11 @@ export async function compile(
         }
 
         let componentTree = parseHtml(componentContentCache.get(componentName)!)
+
+        // do evaluations
+        componentTree = await walk(componentTree, n =>
+            expandEvaluations(n, evaluationOptions),
+        )
 
         // organize attributes into a map
         const attrMap: Record<string, Attributes> = {}
@@ -260,6 +286,57 @@ export class HTempCompiler {
 }
 
 /**
+ * Expands all evaluations for a single node.
+ *
+ * We have this as a separate function because it'll need
+ * to be done both on the initial tree and on loaded
+ * components. It needs to happen before any attribute merging
+ * to accomodate custom merge strategies.
+ */
+async function expandEvaluations(
+    node: Node,
+    options: Required<
+        Pick<
+            HTempCompileOptions,
+            "evaluateAttributePrefix" | "evaluateContentPattern"
+        >
+    >,
+) {
+    // evaluate attributes
+    if (isTagNode(node) && typeof node.tag === "string" && node.attrs) {
+        for (const [k, v] of Object.entries(node.attrs)) {
+            if (typeof v !== "string") continue
+
+            const { isMatch, segments } = colonMatch(2, k)
+            if (!isMatch || segments[0] !== options.evaluateAttributePrefix)
+                continue
+
+            delete node.attrs[k]
+            const evaluatedResult = indirectEval(v)
+
+            // skip if result is false or null
+            if (evaluatedResult === false || evaluatedResult == null) continue
+
+            // true is an empty but included attribute
+            if (evaluatedResult === true) node.attrs[segments[1]] = true
+            // otherwise, just try to make it a string
+            else node.attrs[segments[1]] = `${evaluatedResult}`
+        }
+    }
+
+    if (typeof node !== "string") return node
+
+    // evaluate content
+    return node.replaceAll(options.evaluateContentPattern, (_, code) => {
+        const evaluatedResult = indirectEval(code)
+        // skip if result is false or null
+        if (evaluatedResult === false || evaluatedResult == null) return ""
+        // otherwise, just try to make it a string
+        return `${evaluatedResult}`
+    })
+}
+
+/**
  * Walks the tree, executing the callback on each node.
  */
 export async function walk(
@@ -316,7 +393,7 @@ export async function walkByTag(
  * Flattens, removes nodes with falsy tags, etc. Useful for cleaning
  * up the various union types of posthtml-parser.
  */
-function normalizeContent(
+export function normalizeContent(
     content: Node | Node[] | Content | undefined,
 ): Node[] {
     if (content == null) return []
@@ -376,6 +453,13 @@ function colonMatch(
               isMatch: false,
               segments: [],
           }
+}
+
+/**
+ * Uses indirect eval in strict mode to evaluate the string.
+ */
+function indirectEval(str: string) {
+    return eval?.(`"use strict";\n${str}`)
 }
 
 type WalkCallback = (node: Node) => Node | Node[] | Promise<Node | Node[]>
