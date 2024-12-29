@@ -6,19 +6,52 @@ import * as prettier from "prettier"
 import { parseHtml } from "./lib/parser"
 
 export interface HTempCompileOptions {
+    /**
+     * Optional object containing components. These will take precedence over
+     * files in the componentsRoot.
+     */
+    components?: Record<string, string>
+    /**
+     * Where to look for components, which are just .html files.
+     * @default "./components"
+     */
     componentsRoot?: string
+    /**
+     * The prefix to use for component tags.
+     * @default "x-"
+     */
     componentTagPrefix?: string
+    /**
+     * The tag to use for yields.
+     * @default "yield"
+     */
     yieldTag?: string
+    /**
+     * Whether to pretty-print the output. Uses prettier.
+     * @default true
+     */
     pretty?: boolean
+    /**
+     * The attribute to use for passing attributes to components.
+     * @default "attr"
+     */
     attrAttribute?: string
+    /**
+     * The tag to use for defining slots.
+     * @default "slot"
+     */
     defineSlotTag?: string
+    /**
+     * The tag to use for filling slots.
+     * @default "fill"
+     */
     fillSlotTag?: string
 }
 
 export async function compile(
     html: string,
     {
-        componentsRoot = "components",
+        componentsRoot = "./components",
         componentTagPrefix = "x-",
         yieldTag = "yield",
         pretty = true,
