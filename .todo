@@ -14,6 +14,6 @@
     ✔ Dynamic content (+tests) @done (12/29/2024, 1:21:22 PM)
 ☐ Add props to components (+tests)
 ✔ Optional wrapper tag @done (12/29/2024, 3:07:21 PM)
-☐ Conditional tags
+✔ Conditional tags @done (12/30/2024, 9:15:43 AM)
 ☐ Loop tags
 ☐ Make class and style attributes merge differently

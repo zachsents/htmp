@@ -346,10 +346,13 @@ async function expandEvaluations(
         })
     })
 
+    const conditionalTagsThatShouldTrigger = new Set<NodeTagWithTag>()
+
     // other evaluations
-    newTree = await walkTags(newTree, n => {
+    newTree = await walkTags(newTree, (n, i, arr) => {
+        // dynamic tags
         if (n.tag === options.dynamicTag) {
-            if (!n.attrs?.tag || typeof n.attrs.tag !== "string")
+            if (!hasStringAttribute(n, "tag"))
                 throw new Error("Dynamic tag must have a tag attribute")
 
             const evaluatedResult = indirectEval(n.attrs.tag)
@@ -362,13 +365,60 @@ async function expandEvaluations(
                 /^\S+$/.test(evaluatedResult)
             ) {
                 n.tag = evaluatedResult
-                delete n.attrs.tag
+                delete (n.attrs as Partial<typeof n.attrs>).tag
                 return n
             }
 
             throw new Error(
                 "Dynamic tag tag attribute must evaluate to a string (with no spaces), nullish, or false.",
             )
+        }
+
+        // conditional tags
+        if (n.tag === "if") {
+            if (!hasStringAttribute(n, "condition"))
+                throw new Error(
+                    "Conditional tag must have a condition attribute",
+                )
+
+            const evaluatedResult = indirectEval(n.attrs.condition)
+
+            // short-circuit truthy case
+            if (evaluatedResult) return { tag: false, content: n.content }
+
+            // set up to check for else-ifs and elses
+            const nextNode = arr.at(i + 1)
+            if (nextNode && ["elseif", "else"].includes(nextNode.tag)) {
+                conditionalTagsThatShouldTrigger.add(nextNode)
+            }
+
+            return []
+        }
+        if (n.tag === "elseif") {
+            if (!hasStringAttribute(n, "condition"))
+                throw new Error(
+                    "Conditional tag must have a condition attribute",
+                )
+
+            if (!conditionalTagsThatShouldTrigger.has(n)) return []
+
+            const evaluatedResult = indirectEval(n.attrs.condition)
+
+            // short-circuit truthy case
+            if (evaluatedResult) return { tag: false, content: n.content }
+
+            // set up to check for else-ifs and elses
+            const nextNode = arr.at(i + 1)
+            if (nextNode && ["elseif", "else"].includes(nextNode.tag)) {
+                conditionalTagsThatShouldTrigger.add(nextNode)
+            }
+
+            return []
+        }
+        if (n.tag === "else") {
+            return conditionalTagsThatShouldTrigger.has(n)
+                ? { tag: false, content: n.content }
+                : []
         }
 
         return n
@@ -382,11 +432,11 @@ async function expandEvaluations(
  */
 export async function walk(
     tree: Node[],
-    callback: WalkCallback,
+    callback: (node: Node, i: number, arr: Node[]) => WalkReturn,
 ): Promise<Node[]> {
     return Promise.all(
-        tree.map(async n => {
-            const cbResult = await callback(n)
+        tree.map(async (n, i, arr) => {
+            const cbResult = await callback(n, i, arr)
 
             const cleaned = normalizeContent(cbResult)
 
@@ -409,11 +459,24 @@ export async function walk(
  */
 export async function walkTags(
     tree: Node[],
-    callback: (node: NodeTagWithTag) => ReturnType<WalkCallback>,
+    callback: (
+        node: NodeTagWithTag,
+        i: number,
+        arr: NodeTagWithTag[],
+    ) => WalkReturn,
 ) {
-    return walk(tree, async n => {
-        if (isTagNode(n) && typeof n.tag === "string" && n.tag)
-            return callback(n as NodeTagWithTag)
+    const filteredArrCache = new Map<Node[], NodeTagWithTag[]>()
+
+    return walk(tree, async (n, i, arr) => {
+        const qualifies = (n: Node): n is NodeTagWithTag =>
+            isTagNode(n) && typeof n.tag === "string" && !!n.tag
+
+        if (qualifies(n)) {
+            if (!filteredArrCache.has(arr))
+                filteredArrCache.set(arr, arr.filter(qualifies))
+            return callback(n, i, filteredArrCache.get(arr)!)
+        }
+
         return n
     })
 }
@@ -425,9 +488,9 @@ export async function walkTags(
 export async function walkByTag(
     tree: Node[],
     tag: string,
-    callback: (node: NodeTagWithTag) => ReturnType<WalkCallback>,
+    callback: (node: NodeTagWithTag) => WalkReturn,
 ) {
-    return walkTags(tree, async n => (n.tag === tag ? callback(n) : n))
+    return walkTags(tree, n => (n.tag === tag ? callback(n) : n))
 }
 
 /**
@@ -503,8 +566,6 @@ function indirectEval(str: string) {
     return eval?.(`"use strict";\n${str}`)
 }
 
-type WalkCallback = (node: Node) => Node | Node[] | Promise<Node | Node[]>
+type WalkReturn = Node | Node[] | Promise<Node | Node[]>
 
-type NodeTagWithTag = Omit<NodeTag, "tag"> & {
-    tag: string
-}
+type NodeTagWithTag = Omit<NodeTag, "tag"> & { tag: string }
