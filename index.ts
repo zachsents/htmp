@@ -279,7 +279,7 @@ async function expandEvaluations(
     const conditionalTagsThatShouldTrigger = new Set<NodeTagWithTag>()
 
     // other evaluations
-    newTree = await walkTags(newTree, (n, i, arr) => {
+    newTree = await walkTags(newTree, async (n, i, arr) => {
         // dynamic tags
         if (n.tag === options.dynamicTag) {
             if (!hasStringAttribute(n, "tag"))
@@ -349,6 +349,35 @@ async function expandEvaluations(
             return conditionalTagsThatShouldTrigger.has(n)
                 ? { tag: false, content: n.content }
                 : []
+        }
+
+        // switch/case tags
+        if (n.tag === "switch") {
+            if (!hasStringAttribute(n, "value"))
+                throw new Error("Switch tag must have a value attribute")
+
+            const evaluatedResult = indirectEval(n.attrs.value)
+
+            const caseChildren = onlyTags(normalizeContent(n.content)).filter(
+                n2 => n2.tag === "case",
+            )
+
+            const defaultCase = caseChildren.find(
+                n2 =>
+                    !hasStringAttribute(n2, "case") &&
+                    typeof n2.attrs?.default !== "undefined",
+            )
+
+            const winningCase = caseChildren.find(
+                n2 =>
+                    typeof n2.attrs?.default === "undefined" &&
+                    hasStringAttribute(n2, "case") &&
+                    indirectEval(n2.attrs.case) === evaluatedResult,
+            )
+
+            if (winningCase) return { tag: false, content: winningCase.content }
+            if (defaultCase) return { tag: false, content: defaultCase.content }
+            return []
         }
 
         return n
@@ -460,9 +489,7 @@ export function hasStringAttribute<Attr extends string>(
     node: Node,
     attr: Attr,
 ): node is Omit<NodeTag, "attrs"> & {
-    attrs: {
-        [k in Attr]: string
-    }
+    attrs: Record<Attr, string> & Attributes
 } {
     return isTagNode(node) && typeof node.attrs?.[attr] === "string"
 }

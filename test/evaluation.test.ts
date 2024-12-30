@@ -137,3 +137,64 @@ test("Non-consecutive if/elseif/else tags are treated like different branches", 
     )
     expect(html).not.toContain("TEST")
 })
+
+test("Switch-case rendering for matching case", async () => {
+    const html = await hc.compile(
+        `<switch value="'apple'">
+            <case case="'apple'">Apple case</case>
+            <case case="'banana'">Banana case</case>
+        </switch>`,
+    )
+    expect(html.trim()).toBe("Apple case")
+})
+
+test("Switch-case rendering for non-matching cases and default case", async () => {
+    const html = await hc.compile(
+        `<switch value="'orange'">
+            <case case="'apple'">Apple case</case>
+            <case case="'banana'">Banana case</case>
+            <case default>Default case</case>
+        </switch>`,
+    )
+    expect(html.trim()).toBe("Default case")
+})
+
+test("Switch-case with no match and no default results in empty output", async () => {
+    const html = await hc.compile(
+        `<switch value="'grape'">
+            <case case="'apple'">Apple</case>
+            <case case="'banana'">Banana</case>
+        </switch>`,
+    )
+    expect(html.trim()).toBe("")
+})
+
+test("Switch evaluates to no output with only default", async () => {
+    const html = await hc.compile(
+        `<switch value="'pear'">
+            <case default>Default only case</case>
+        </switch>`,
+    )
+    expect(html.trim()).toBe("Default only case")
+})
+
+test("Switch with a complex JavaScript evaluation", async () => {
+    const html = await hc.compile(
+        `<switch value="1 + 1">
+            <case case="2">Case for 2</case>
+            <case default>Default case</case>
+        </switch>`,
+    )
+    expect(html.trim()).toBe("Case for 2")
+})
+
+test("Switch-case ignores non-matching cases", async () => {
+    const html = await hc.compile(
+        `<switch value="'banana'">
+            <case case="'apple'">Wrong</case>
+            <case case="'banana'">Correct</case>
+            <case case="'orange'">Wrong</case>
+        </switch>`,
+    )
+    expect(html.trim()).toBe("Correct")
+})

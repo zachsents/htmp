@@ -6,6 +6,9 @@ import { parser, type Options as PosthtmlParserOptions } from "posthtml-parser"
 
 const POSTHTML_PARSER_OPTIONS: PosthtmlParserOptions = {
     recognizeSelfClosing: true,
+    // lowerCaseAttributeNames: true,
+    // recognizeNoValueAttribute: true,
+    // lowerCaseTags: true,
 }
 
 export function parseHtml(html: string, options?: PosthtmlParserOptions) {
