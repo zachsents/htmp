@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import { HTmpCompiler } from ".."
 import { parseHtml } from "../lib/parser"
 import { isTag } from "domhandler"
+import { findElement } from "../lib/utils"
 
 const hc = new HTmpCompiler({
     componentsRoot: "./test/components",
@@ -64,13 +65,13 @@ test("Evaluation happens before merging attributes", async () => {
             test: "<div eval:data-test='1+2' />",
         },
     })
-    const tree = (await parseHtml(html)).filter(isTag)
-    expect(tree[0].attribs).toHaveProperty("data-test", "8")
+    const div = findElement(await parseHtml(html), "div")
+    expect(div).toBeDefined()
+    expect(div!.attribs).toHaveProperty("data-test", "8")
 })
 
 test("Dynamic tags are computed", async () => {
     const html = await hc.compile("<dynamic tag=\"'div'\" />")
-    console.log(html)
     expect(html).toBe("<div></div>")
 })
 

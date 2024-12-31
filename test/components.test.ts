@@ -53,6 +53,16 @@ test("Component can insert multiple nodes", async () => {
     expect(elements).toHaveLength(3)
 })
 
+test("Components work recursively", async () => {
+    const html = await hc.compile("<x-test />", {
+        components: {
+            test: "<x-hello />",
+            hello: "<p>Hello!</p>",
+        },
+    })
+    expect(html).toBe("<p>Hello!</p>")
+})
+
 test("Component yields content", async () => {
     const html = await hc.compile("<x-test>TEST</x-test>", {
         components: {
@@ -116,6 +126,17 @@ test("Attributes are passed to first tag when attr is not present", async () => 
 
     expect(elements[0].attribs).toHaveProperty("data-test", "TEST")
     expect(elements[1].attribs).not.toHaveProperty("data-test")
+})
+
+test("Passed attributes override attributes in components", async () => {
+    const html = await hc.compile("<x-test data-test='TEST' />", {
+        components: {
+            test: "<p data-test='ORIGINAL' />",
+        },
+    })
+    const p = findElement(await parseHtml(html), "p")
+    expect(p).toBeDefined()
+    expect(p!.attribs).toHaveProperty("data-test", "TEST")
 })
 
 test("Text nodes are ignored when passing attributes in default manner", async () => {

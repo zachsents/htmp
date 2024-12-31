@@ -1,11 +1,4 @@
-import {
-    type AnyNode,
-    type ChildNode,
-    type Element,
-    hasChildren,
-    isTag,
-} from "domhandler"
-import { append, prepend, removeElement } from "domutils"
+import { type AnyNode, type Element, hasChildren, isTag } from "domhandler"
 
 export function findNode<T extends AnyNode>(
     tree: AnyNode[],
@@ -82,15 +75,4 @@ export function findElements(
         if (typeof tagOrTest === "function") return tagOrTest(node)
         return false
     })
-}
-
-export function copyAndReplace(
-    replaceTarget: ChildNode,
-    nodesToCopy: ChildNode[],
-) {
-    for (const child of nodesToCopy) {
-        const clone = child.cloneNode(true)
-        prepend(replaceTarget, clone)
-    }
-    removeElement(replaceTarget)
 }

@@ -1,14 +1,7 @@
 import { expect, test } from "bun:test"
-import { parseHtml, renderHtml } from "../lib/parser"
-import {
-    findElement,
-    findElements,
-    findNode,
-    findNodes,
-    copyAndReplace,
-} from "../lib/utils"
-import { Element, isTag, isText, Text } from "domhandler"
-import { ElementType } from "htmlparser2"
+import { type Element, isTag, isText, type Text } from "domhandler"
+import { parseHtml } from "../lib/parser"
+import { findElement, findElements, findNode, findNodes } from "../lib/utils"
 
 const testFragment = "<div><p>Hello</p><b>World</b></div>"
 
@@ -54,20 +47,4 @@ test("findElements finds multiple elements", async () => {
     const found = findElements(tree, "p")
     expect(found).toHaveLength(1)
     expect(found[0].tagName).toBe("p")
-})
-
-test("copyAndReplace replaces a node with multiple nodes", async () => {
-    const tree = await parseHtml(testFragment)
-
-    const bTag = findElement(tree, "b")
-    expect(bTag).toBeDefined()
-
-    copyAndReplace(bTag!, [
-        new Element("p", {}, [new Text("Second")]),
-        new Element("p", {}, [new Text("Second")]),
-    ])
-
-    const divTag = findElement(tree, "div")
-    expect(divTag).toBeDefined()
-    expect(divTag!.children).toHaveLength(3)
 })

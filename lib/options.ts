@@ -67,4 +67,62 @@ export interface HTmpCompileOptions {
      * Defaults to "dynamic"
      */
     dynamicTag?: string
+    /**
+     * The context used for evaluating JavaScript.
+     */
+    evalContext?: Record<string, unknown>
+    /**
+     * Debug option. Prints the compiled step after every iteration.
+     */
+    debug?: boolean
+}
+
+export function getDefaultOptions(
+    passedOptions: HTmpCompileOptions,
+): Required<HTmpCompileOptions> {
+    const {
+        components = {},
+        componentsRoot = "./components",
+        componentTagPrefix = "x-",
+        yieldTag = "yield",
+        pretty = true,
+        attrAttribute = "attr",
+        defineSlotTag = "slot",
+        fillSlotTag = "fill",
+        stackTag = "stack",
+        pushTag = "push",
+        evaluateAttributePrefix = "eval",
+        evaluateContentPattern = /%%(.+?)%%/g,
+        dynamicTag = "dynamic",
+        evalContext = {},
+        debug = false,
+    } = passedOptions
+
+    // convert components to kebab case
+    const convertedComponents = Object.fromEntries(
+        Object.entries(components).map(([k, v]) => {
+            let newKey =
+                k.match(/[a-z]+|[A-Z][a-z]+|[A-Z]+|\d+/g)?.join("-") ?? k
+            newKey = newKey.toLowerCase()
+            return [newKey, v] as const
+        }),
+    )
+
+    return {
+        components: convertedComponents,
+        componentsRoot,
+        componentTagPrefix,
+        yieldTag,
+        pretty,
+        attrAttribute,
+        defineSlotTag,
+        fillSlotTag,
+        stackTag,
+        pushTag,
+        evaluateAttributePrefix,
+        evaluateContentPattern,
+        dynamicTag,
+        evalContext,
+        debug,
+    }
 }

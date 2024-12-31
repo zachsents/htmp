@@ -17,9 +17,10 @@ test("Push tag gets pushed to stack", async () => {
             },
         },
     )
-    const tree = (await parseHtml(html)).filter(isTag)
-    expect(tree[0].tagName).toBe("div")
-    expect(tree[1].tagName).toBe("p")
+    const elements = (await parseHtml(html)).filter(isTag)
+
+    expect(elements[0].tagName).toBe("div")
+    expect(elements[1].tagName).toBe("p")
 })
 
 test("Elements pushed to stack are de-duped by id", async () => {
@@ -33,6 +34,6 @@ test("Elements pushed to stack are de-duped by id", async () => {
             },
         },
     )
-    const tree = (await parseHtml(html)).filter(isTag)
-    expect(innerText(tree[1]).trim()).toBe("PUSHED FROM A")
+    const elements = (await parseHtml(html)).filter(isTag)
+    expect(innerText(elements[1]).trim()).toBe("PUSHED FROM A")
 })
