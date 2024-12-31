@@ -13,6 +13,7 @@ import * as prettier from "prettier"
 import { type HTmpCompileOptions, getDefaultOptions } from "./lib/options"
 import { parseHtml, renderHtml } from "./lib/parser"
 import { findElements } from "./lib/utils"
+import { runInNewContext } from "node:vm"
 
 async function processTree(
     tree: AnyNode[],
@@ -26,32 +27,33 @@ async function processTree(
             )
 
         const currentNode = tree[cursor]
-        const shouldProceed = await processNode(currentNode, opts)
+        const result = await processNode(currentNode, opts)
 
         // re-runs the loop without changing the cursor position
-        if (!shouldProceed) continue
+        if (!result) continue
 
         // recurse into children
-        if (hasChildren(currentNode))
+        if (result.processChildren && hasChildren(currentNode))
             await processTree(currentNode.children, opts)
 
         // proceed to next node
-        cursor++
+        cursor += result.moveCursor ?? 1
     }
 }
 
 async function processNode(
     node: AnyNode,
     opts: Required<HTmpCompileOptions>,
-): Promise<void | boolean> {
-    const runScript = indirectEval
-
+): Promise<void | {
+    moveCursor?: number
+    processChildren: boolean
+}> {
     if (isText(node)) {
         // evaluate content
         node.data = node.data.replaceAll(
             opts.evaluateContentPattern,
             (_, code) => {
-                const evaluatedResult = runScript(code)
+                const evaluatedResult = runInNewContext(code, opts.evalContext)
                 // skip if result is false or null
                 if (evaluatedResult === false || evaluatedResult == null)
                     return ""
@@ -59,20 +61,23 @@ async function processNode(
                 return `${evaluatedResult}`
             },
         )
-        return true
+        return { processChildren: false }
     }
 
-    if (!isTag(node)) return true
+    if (!isTag(node)) return { processChildren: false }
 
     // evaluate attributes
-    evaluateAttributes(node, opts, runScript)
+    evaluateAttributes(node, opts)
 
     // dynamic tags
     if (node.tagName === opts.dynamicTag) {
         if (!("tag" in node.attribs))
             throw new Error("Dynamic tag must have a tag attribute")
 
-        const evaluatedResult = runScript(node.attribs.tag)
+        const evaluatedResult = runInNewContext(
+            node.attribs.tag,
+            opts.evalContext,
+        )
 
         // false or nullish results means remove the wrapper
         if (evaluatedResult == null || evaluatedResult === false) {
@@ -88,7 +93,7 @@ async function processNode(
         ) {
             node.tagName = evaluatedResult
             delete node.attribs.tag
-            return true
+            return { processChildren: true }
         }
 
         throw new Error(
@@ -111,7 +116,10 @@ async function processNode(
         if (!("value" in node.attribs))
             throw new Error("Switch tag must have a value attribute")
 
-        const evaluatedResult = runScript(node.attribs.value)
+        const evaluatedResult = runInNewContext(
+            node.attribs.value,
+            opts.evalContext,
+        )
 
         const caseChildren = node.children.filter(
             (n): n is Element => isTag(n) && n.tagName === "case",
@@ -127,7 +135,8 @@ async function processNode(
                 caseEl =>
                     "case" in caseEl.attribs &&
                     !("default" in caseEl.attribs) &&
-                    runScript(caseEl.attribs.case) === evaluatedResult,
+                    runInNewContext(caseEl.attribs.case, opts.evalContext) ===
+                        evaluatedResult,
             ) ?? defaultCase
 
         if (winningCase) {
@@ -145,15 +154,31 @@ async function processNode(
                     "For tag item attribute must be a valid identifier",
                 )
 
-            const evaluatedResult = runScript(node.attribs.in)
-            if (!(Symbol.iterator in evaluatedResult))
+            const evaluatedArray = runInNewContext(
+                node.attribs.in,
+                opts.evalContext,
+            )
+            if (!(Symbol.iterator in evaluatedArray))
                 throw new Error(
                     "For tag in attribute must evaluate to an array",
                 )
 
-            for (const item of evaluatedResult) {
+            const loopContext = Object.create(opts.evalContext)
+            let insertCount = 0
+
+            for (const item of evaluatedArray) {
+                loopContext[node.attribs.item] = item
+                const innerTree = node.cloneNode(true)
+                await processTree(innerTree.children, {
+                    ...opts,
+                    evalContext: loopContext,
+                })
+                insertCount += innerTree.children.length
+                while (innerTree.firstChild) prepend(node, innerTree.firstChild)
             }
-            return
+            removeElement(node)
+            // come back to this -- move cursor past inserted nodes
+            return { processChildren: false, moveCursor: insertCount }
         }
         throw new Error("For tag must have item and in attributes")
     }
@@ -214,7 +239,7 @@ async function processNode(
             delete innerEl.attribs[opts.attrAttribute]
             if (attrMap[attrVal]) {
                 // evaluate first to enable custom merging strategies
-                evaluateAttributes(innerEl, opts, runScript)
+                evaluateAttributes(innerEl, opts)
                 Object.assign(innerEl.attribs, attrMap[attrVal])
             }
         }
@@ -224,7 +249,7 @@ async function processNode(
             const firstTag = componentTree.find(isTag)
             if (firstTag) {
                 // evaluate first to enable custom merging strategies
-                evaluateAttributes(firstTag, opts, runScript)
+                evaluateAttributes(firstTag, opts)
                 Object.assign(firstTag.attribs, attrMap[""])
             }
         }
@@ -269,7 +294,7 @@ async function processNode(
         return
     }
 
-    return true
+    return { processChildren: true }
 }
 
 function processStacks(tree: AnyNode[], opts: Required<HTmpCompileOptions>) {
@@ -310,17 +335,13 @@ function processStacks(tree: AnyNode[], opts: Required<HTmpCompileOptions>) {
     }
 }
 
-function evaluateAttributes(
-    node: Element,
-    opts: Required<HTmpCompileOptions>,
-    runScript: (code: string) => unknown,
-) {
+function evaluateAttributes(node: Element, opts: Required<HTmpCompileOptions>) {
     for (const [k, v] of Object.entries(node.attribs)) {
         const { isMatch, segments } = colonMatch(2, k)
         if (!isMatch || segments[0] !== opts.evaluateAttributePrefix) continue
 
         delete node.attribs[k]
-        const evaluatedResult = runScript(v)
+        const evaluatedResult = runInNewContext(v, opts.evalContext)
 
         // skip if result is false or null
         if (evaluatedResult === false || evaluatedResult == null) continue

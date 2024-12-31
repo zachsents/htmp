@@ -2,7 +2,8 @@ import { expect, test } from "bun:test"
 import { HTmpCompiler } from ".."
 import { parseHtml } from "../lib/parser"
 import { isTag } from "domhandler"
-import { findElement } from "../lib/utils"
+import { findElement, findElements } from "../lib/utils"
+import { innerText } from "domutils"
 
 const hc = new HTmpCompiler({
     componentsRoot: "./test/components",
@@ -205,4 +206,69 @@ test("Switch-case ignores non-matching cases", async () => {
         </switch>`,
     )
     expect(html.trim()).toBe("Correct")
+})
+
+test("Context is available in evaluations", async () => {
+    const html = await hc.compile("<div>%% test %%</div>", {
+        evalContext: { test: "hello" },
+    })
+    expect(html).toBe("<div>hello</div>")
+})
+
+test("Context mutations persist", async () => {
+    const html = await hc.compile(
+        `<div>%% let old = test; test = 'world'; old %%</div>
+        <div>%% test %%</div>`,
+        {
+            evalContext: { test: "hello" },
+        },
+    )
+    const text = innerText(await parseHtml(html)).replaceAll(/\s+/g, "")
+    expect(text).toBe("helloworld")
+})
+
+test("Newly defined variables are available in children", async () => {
+    const html = await hc.compile(`<div>
+        %% test = 5 %%
+        <p>%% test %%</p>
+    </div>`)
+    const p = findElement(await parseHtml(html), "p")
+    expect(p).toBeDefined()
+    expect(innerText(p!)).toBe("5")
+})
+
+test("For each loops work", async () => {
+    const html = await hc.compile(
+        `<for item="x" in="[3, 5, 7]">
+            <p>%% x %%</p>
+        </for>`,
+    )
+    const elements = findElements(await parseHtml(html), "p")
+    expect(elements).toHaveLength(3)
+    for (const el of elements) expect(innerText(el)).toMatch(/\d/)
+})
+
+test("For each loop variables aren't available outside of children", async () => {
+    const promise = hc.compile(
+        `<for item="x" in="[3, 5, 7]">
+            <p>%% x %%</p>
+        </for>
+        <div>%% x %%</div>`,
+    )
+    expect(promise).rejects.toThrow()
+})
+
+test("For each loop variables are available deeply in children", async () => {
+    const html = await hc.compile(
+        `<for item="x" in="[3, 5, 7]">
+            <div>
+                <div>
+                    <p>%% x %%</p>
+                </div>
+            </div>
+        </for>`,
+    )
+    const tree = await parseHtml(html)
+    const paragraphs = findElements(tree, "p")
+    expect(paragraphs).toHaveLength(3)
 })
