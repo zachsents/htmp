@@ -1,5 +1,6 @@
 {
-    "name": "@zachsents/htemp",
+    "name": "@zachsents/htmp",
+    "description": "The HTML template backend for simplified, modern web development.",
     "author": "Zach Sents",
     "module": "index.ts",
     "type": "module",
