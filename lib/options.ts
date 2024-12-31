@@ -1,4 +1,4 @@
-export interface HTempCompileOptions {
+export interface HTmpCompileOptions {
     /**
      * Optional object containing components. These will take precedence over
      * files in the componentsRoot.

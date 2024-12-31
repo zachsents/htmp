@@ -1,10 +1,16 @@
+import type { AnyNode, Element } from "domhandler"
+import { isTag, isText, nextElementSibling, removeElement } from "domutils"
 import fs from "node:fs/promises"
 import path from "node:path"
-import type { Attributes, Content, Node, NodeTag } from "posthtml-parser"
-import { render } from "posthtml-render"
 import * as prettier from "prettier"
-import { parseHtml } from "./lib/parser"
-import type { HTempCompileOptions } from "./lib/options"
+import type { HTmpCompileOptions } from "./lib/options"
+import { parseHtml, renderHtml } from "./lib/parser"
+import {
+    copyAndReplace,
+    findElement,
+    findElements,
+    findNodes,
+} from "./lib/utils"
 
 export async function compile(
     html: string,
@@ -22,9 +28,9 @@ export async function compile(
         evaluateAttributePrefix = "eval",
         evaluateContentPattern = /%%(.+?)%%/g,
         dynamicTag = "dynamic",
-    }: HTempCompileOptions = {},
+    }: HTmpCompileOptions = {},
 ) {
-    let tree = parseHtml(html)
+    const tree = await parseHtml(html)
 
     // initialize component cache
     const componentContentCache = new Map<string, string>(
@@ -44,167 +50,154 @@ export async function compile(
         evaluateContentPattern,
         dynamicTag,
     }
-    tree = await expandEvaluations(tree, evaluationOptions)
+    await expandEvaluations(tree, evaluationOptions)
 
     // Components
-    tree = await walkTags(tree, async n => {
-        // not a component -- skip
-        if (!n.tag.startsWith(componentTagPrefix)) return n
+    const componentElements = findElements(tree, el =>
+        el.tagName.startsWith(componentTagPrefix),
+    )
+    await Promise.all(
+        componentElements.map(async el => {
+            const componentName = el.tagName.slice(componentTagPrefix.length)
 
-        const componentName = n.tag.slice(componentTagPrefix.length)
-
-        // component -- load, parse, and expand
-        if (!componentContentCache.has(componentName)) {
-            const componentPath = path.join(
-                componentsRoot,
-                `${componentName.replaceAll(".", path.sep)}.html`,
-            )
-            try {
-                const componentContent = await fs.readFile(
-                    componentPath,
-                    "utf8",
+            // load into component cache
+            if (!componentContentCache.has(componentName)) {
+                const componentPath = path.join(
+                    componentsRoot,
+                    `${componentName.replaceAll(".", path.sep)}.html`,
                 )
-                componentContentCache.set(componentName, componentContent)
-            } catch (err) {
-                if (
-                    typeof err === "object" &&
-                    err != null &&
-                    "code" in err &&
-                    err.code === "ENOENT"
-                )
-                    throw new Error(`Component not found: ${n.tag}`)
-                throw err
-            }
-        }
-
-        let componentTree = parseHtml(componentContentCache.get(componentName)!)
-
-        // do evaluations
-        componentTree = await expandEvaluations(
-            componentTree,
-            evaluationOptions,
-        )
-
-        // organize attributes into a map
-        const attrMap: Record<string, Attributes> = {}
-        for (const [k, v] of Object.entries(n.attrs ?? {})) {
-            const { isMatch, segments } = colonMatch(3, k)
-            if (isMatch && segments[0] === attrAttribute) {
-                // assign to attribute slot
-                attrMap[segments[1]] ??= {}
-                attrMap[segments[1]][segments[2]] = v
-            } else {
-                // default attribute slot
-                attrMap[""] ??= {}
-                attrMap[""][k] = v
-            }
-        }
-
-        // pass attributes through to component
-        let foundDefaultAttributeTarget = false
-        componentTree = await walkTags(componentTree, n2 => {
-            // true aliases to default slot -- not sure if this ever happens in practice
-            if (n2.attrs?.[attrAttribute] === true) n2.attrs[attrAttribute] = ""
-
-            // now we're only willing to deal with strings
-            if (!(typeof n2.attrs?.[attrAttribute] === "string")) return n2
-
-            const attrVal = n2.attrs[attrAttribute]
-            if (attrVal === "") foundDefaultAttributeTarget = true
-            delete n2.attrs[attrAttribute]
-            if (attrMap[attrVal]) Object.assign(n2.attrs, attrMap[attrVal])
-
-            return n2
-        })
-
-        // add attributes to first tag if no default slot was found
-        if (!foundDefaultAttributeTarget && attrMap[""]) {
-            const firstTag = onlyTags(componentTree)[0]
-            if (firstTag) {
-                firstTag.attrs ??= {}
-                Object.assign(firstTag.attrs, attrMap[""])
-            }
-        }
-
-        // organize content into slots and yields
-        let yieldContent: Node[] | undefined
-        const slotContent: Record<string, Node[] | undefined> = {}
-        for (const contentNode of normalizeContent(n.content)) {
-            if (isTagNode(contentNode) && typeof contentNode.tag === "string") {
-                const { isMatch, segments } = colonMatch(2, contentNode.tag)
-
-                if (isMatch && segments[0] === fillSlotTag) {
-                    slotContent[segments[1]] ??= []
-                    slotContent[segments[1]]!.push(
-                        ...normalizeContent(contentNode.content),
+                try {
+                    const componentContent = await fs.readFile(
+                        componentPath,
+                        "utf8",
                     )
+                    componentContentCache.set(componentName, componentContent)
+                } catch (err) {
+                    if (
+                        typeof err === "object" &&
+                        err != null &&
+                        "code" in err &&
+                        err.code === "ENOENT"
+                    )
+                        throw new Error(`Component not found: ${el.tagName}`)
+                    throw err
+                }
+            }
+
+            const componentTree = await parseHtml(
+                componentContentCache.get(componentName)!,
+            )
+
+            // do evaluations
+            await expandEvaluations(componentTree, evaluationOptions)
+
+            // organize attributes into a map
+            const attrMap: Record<string, Record<string, string>> = {}
+            for (const [k, v] of Object.entries(el.attribs)) {
+                const { isMatch, segments } = colonMatch(3, k)
+                if (isMatch && segments[0] === attrAttribute) {
+                    // assign to attribute slot
+                    attrMap[segments[1]] ??= {}
+                    attrMap[segments[1]][segments[2]] = v
+                } else {
+                    // default attribute slot
+                    attrMap[""] ??= {}
+                    attrMap[""][k] = v
+                }
+            }
+
+            // pass attributes through to component
+            let foundDefaultAttributeTarget = false
+            for (const innerEl of findElements(
+                componentTree,
+                el => attrAttribute in el.attribs,
+            )) {
+                const attrVal = innerEl.attribs[attrAttribute]
+                if (attrVal === "") foundDefaultAttributeTarget = true
+                delete innerEl.attribs[attrAttribute]
+                if (attrMap[attrVal])
+                    Object.assign(innerEl.attribs, attrMap[attrVal])
+            }
+
+            // add attributes to first tag if no default slot was found
+            if (!foundDefaultAttributeTarget && attrMap[""]) {
+                const firstTag = componentTree.find(isTag)
+                if (firstTag) Object.assign(firstTag.attribs, attrMap[""])
+            }
+
+            // organize content into slots and yields
+            let yieldContent: AnyNode[] | undefined
+            const slotContent: Record<string, AnyNode[] | undefined> = {}
+
+            for (const child of el.children) {
+                if (isTag(child) && child.tagName === fillSlotTag) {
+                    if (!("slot" in child.attribs))
+                        throw new Error("Fill tag must have a slot attribute")
+                    slotContent[child.attribs.slot] ??= []
+                    slotContent[child.attribs.slot]!.push(...child.children)
                     continue
                 }
-            }
-            yieldContent ??= []
-            yieldContent.push(contentNode)
-        }
-
-        // pass content through to slots and yields
-        componentTree = await walkTags(componentTree, async n2 => {
-            if (n2.tag === yieldTag)
-                return { tag: false, content: yieldContent ?? n2.content }
-
-            const { isMatch, segments } = colonMatch(2, n2.tag)
-            if (isMatch && segments[0] === defineSlotTag) {
-                return {
-                    tag: false,
-                    content: slotContent[segments[1]] ?? n2.content,
-                }
+                yieldContent ??= []
+                yieldContent.push(child)
             }
 
-            return n2
-        })
+            // pass content through to yields
+            for (const yieldEl of findElements(componentTree, yieldTag)) {
+                copyAndReplace(yieldEl, yieldContent ?? yieldEl.children)
+            }
 
-        return componentTree
-    })
+            // pass content through to slots
+            for (const slotEl of findElements(componentTree, defineSlotTag)) {
+                if (!("name" in slotEl.attribs))
+                    throw new Error("Slot tag must have a name attribute")
+
+                copyAndReplace(
+                    slotEl,
+                    slotContent[slotEl.attribs.name] ?? slotEl.children,
+                )
+            }
+
+            // finish
+            copyAndReplace(el, componentTree)
+        }),
+    )
 
     // Stacks
-    const stackContent: Record<string, Node[]> = {}
+    const stackInfo: Record<
+        string,
+        {
+            content: AnyNode[]
+            ids: Set<string>
+        }
+    > = {}
 
     // find all pushes first
-    tree = await walkByTag(tree, pushTag, n => {
-        const stackName = n.attrs?.stack
-        if (!stackName) throw new Error("Push tag must have a stack attribute")
-        if (typeof stackName !== "string")
-            throw new Error("Push tag stack attribute must be a string")
+    for (const pushEl of findElements(tree, pushTag)) {
+        if (!("stack" in pushEl.attribs))
+            throw new Error("Push tag must have a stack attribute")
 
-        stackContent[stackName] ??= []
-
-        // make set of ids in stack -- optimization over checking every iteration...i think
-        const idSet = stackContent[stackName].reduce((set, n) => {
-            if (hasStringAttribute(n, "id") && n.attrs.id) set.add(n.attrs.id)
-            return set
-        }, new Set<string>())
+        const stackName = pushEl.attribs.stack
+        stackInfo[stackName] ??= { content: [], ids: new Set() }
 
         // only push content if the id is not already in the stack
-        for (const n2 of normalizeContent(n.content)) {
-            if (hasStringAttribute(n2, "id") && n2.attrs.id) {
-                if (idSet.has(n2.attrs.id)) continue
-                idSet.add(n2.attrs.id)
+        for (const child of pushEl.children) {
+            if (isTag(child) && "id" in child.attribs) {
+                if (stackInfo[stackName].ids.has(child.attribs.id)) continue
+                stackInfo[stackName].ids.add(child.attribs.id)
             }
-            stackContent[stackName].push(n2)
+            stackInfo[stackName].content.push(child)
         }
-
-        return []
-    })
+    }
 
     // then insert the pushed content into the stack
-    tree = await walkByTag(tree, stackTag, n => {
-        const stackName = n.attrs?.name
-        if (!stackName) throw new Error("Stack tag must have a name attribute")
-        if (typeof stackName !== "string")
-            throw new Error("Stack tag name attribute must be a string")
+    for (const stackEl of findElements(tree, stackTag)) {
+        if (!("name" in stackEl.attribs))
+            throw new Error("Stack tag must have a name attribute")
 
-        return stackContent[stackName] ?? []
-    })
+        copyAndReplace(stackEl, stackInfo[stackEl.attribs.name]?.content ?? [])
+    }
 
-    let renderedHtml = render(tree)
+    let renderedHtml = renderHtml(tree)
 
     if (pretty)
         renderedHtml = await prettier.format(renderedHtml, { parser: "html" })
@@ -212,10 +205,10 @@ export async function compile(
     return renderedHtml
 }
 
-export class HTempCompiler {
-    constructor(private options: HTempCompileOptions) {}
+export class HTmpCompiler {
+    constructor(private options: HTmpCompileOptions) {}
 
-    async compile(html: string, options?: Partial<HTempCompileOptions>) {
+    async compile(html: string, options?: Partial<HTmpCompileOptions>) {
         return compile(html, {
             ...this.options,
             ...options,
@@ -232,266 +225,111 @@ export class HTempCompiler {
  * to accomodate custom merge strategies.
  */
 async function expandEvaluations(
-    tree: Node[],
+    nodes: AnyNode[],
     options: Required<
         Pick<
-            HTempCompileOptions,
+            HTmpCompileOptions,
             "evaluateAttributePrefix" | "evaluateContentPattern" | "dynamicTag"
         >
     >,
-): Promise<Node[]> {
-    let newTree = await walk(tree, n => {
-        // evaluate attributes
-        if (isTagNode(n) && typeof n.tag === "string" && n.attrs) {
-            for (const [k, v] of Object.entries(n.attrs)) {
-                if (typeof v !== "string") continue
+): Promise<void> {
+    // evaluate attributes
+    for (const el of findElements(nodes)) {
+        for (const [k, v] of Object.entries(el.attribs)) {
+            const { isMatch, segments } = colonMatch(2, k)
+            if (!isMatch || segments[0] !== options.evaluateAttributePrefix)
+                continue
 
-                const { isMatch, segments } = colonMatch(2, k)
-                if (!isMatch || segments[0] !== options.evaluateAttributePrefix)
-                    continue
+            delete el.attribs[k]
+            const evaluatedResult = indirectEval(v)
 
-                delete n.attrs[k]
-                const evaluatedResult = indirectEval(v)
+            // skip if result is false or null
+            if (evaluatedResult === false || evaluatedResult == null) continue
 
+            // true is an empty but included attribute
+            if (evaluatedResult === true) el.attribs[segments[1]] = ""
+            // otherwise, just try to make it a string
+            else el.attribs[segments[1]] = `${evaluatedResult}`
+        }
+    }
+
+    // evaluate content
+    for (const textNode of findNodes(nodes, isText)) {
+        textNode.data = textNode.data.replaceAll(
+            options.evaluateContentPattern,
+            (_, code) => {
+                const evaluatedResult = indirectEval(code)
                 // skip if result is false or null
                 if (evaluatedResult === false || evaluatedResult == null)
-                    continue
-
-                // true is an empty but included attribute
-                if (evaluatedResult === true) n.attrs[segments[1]] = true
+                    return ""
                 // otherwise, just try to make it a string
-                else n.attrs[segments[1]] = `${evaluatedResult}`
-            }
+                return `${evaluatedResult}`
+            },
+        )
+    }
+
+    // dynamic tags
+    for (const el of findElements(nodes, options.dynamicTag)) {
+        if (!("tag" in el.attribs))
+            throw new Error("Dynamic tag must have a tag attribute")
+
+        const evaluatedResult = indirectEval(el.attribs.tag)
+
+        // false or nullish results means remove the wrapper
+        if (evaluatedResult == null || evaluatedResult === false) {
+            copyAndReplace(el, el.children)
+            continue
         }
 
-        if (typeof n !== "string") return n
-
-        // evaluate content
-        return n.replaceAll(options.evaluateContentPattern, (_, code) => {
-            const evaluatedResult = indirectEval(code)
-            // skip if result is false or null
-            if (evaluatedResult === false || evaluatedResult == null) return ""
-            // otherwise, just try to make it a string
-            return `${evaluatedResult}`
-        })
-    })
-
-    const conditionalTagsThatShouldTrigger = new Set<NodeTagWithTag>()
-
-    // other evaluations
-    newTree = await walkTags(newTree, async (n, i, arr) => {
-        // dynamic tags
-        if (n.tag === options.dynamicTag) {
-            if (!hasStringAttribute(n, "tag"))
-                throw new Error("Dynamic tag must have a tag attribute")
-
-            const evaluatedResult = indirectEval(n.attrs.tag)
-
-            if (evaluatedResult == null || evaluatedResult === false)
-                return { tag: false, content: n.content }
-
-            if (
-                typeof evaluatedResult === "string" &&
-                /^\S+$/.test(evaluatedResult)
-            ) {
-                n.tag = evaluatedResult
-                delete (n.attrs as Partial<typeof n.attrs>).tag
-                return n
-            }
-
-            throw new Error(
-                "Dynamic tag tag attribute must evaluate to a string (with no spaces), nullish, or false.",
-            )
+        // if it's a valid string, replace the tag
+        if (
+            typeof evaluatedResult === "string" &&
+            /^\S+$/.test(evaluatedResult)
+        ) {
+            el.tagName = evaluatedResult
+            delete el.attribs.tag
+            continue
         }
 
-        // conditional tags
-        if (n.tag === "if") {
-            if (!hasStringAttribute(n, "condition"))
-                throw new Error(
-                    "Conditional tag must have a condition attribute",
-                )
+        throw new Error(
+            "Dynamic tag tag attribute must evaluate to a string (with no spaces), nullish, or false.",
+        )
+    }
 
-            const evaluatedResult = indirectEval(n.attrs.condition)
+    // conditional tags
+    for (const el of findElements(nodes, "if")) evaluateConditional(el)
 
-            // short-circuit truthy case
-            if (evaluatedResult) return { tag: false, content: n.content }
+    // now any leftover conditionals are errored
+    if (findElement(nodes, "elseif")) throw new Error("Unexpected elseif")
+    if (findElement(nodes, "else")) throw new Error("Unexpected else")
 
-            // set up to check for else-ifs and elses
-            const nextNode = arr.at(i + 1)
-            if (nextNode && ["elseif", "else"].includes(nextNode.tag)) {
-                conditionalTagsThatShouldTrigger.add(nextNode)
-            }
+    // switch/case tags
+    for (const el of findElements(nodes, "switch")) {
+        if (!("value" in el.attribs))
+            throw new Error("Switch tag must have a value attribute")
 
-            return []
-        }
-        if (n.tag === "elseif") {
-            if (!hasStringAttribute(n, "condition"))
-                throw new Error(
-                    "Conditional tag must have a condition attribute",
-                )
+        const evaluatedResult = indirectEval(el.attribs.value)
 
-            if (!conditionalTagsThatShouldTrigger.has(n)) return []
+        const caseChildren = el.children.filter(
+            (n): n is Element => isTag(n) && n.tagName === "case",
+        )
 
-            const evaluatedResult = indirectEval(n.attrs.condition)
+        const defaultCase = caseChildren.find(
+            caseEl =>
+                "default" in caseEl.attribs && !("case" in caseEl.attribs),
+        )
 
-            // short-circuit truthy case
-            if (evaluatedResult) return { tag: false, content: n.content }
+        const winningCase = caseChildren.find(
+            caseEl =>
+                "case" in caseEl.attribs &&
+                !("default" in caseEl.attribs) &&
+                indirectEval(caseEl.attribs.case) === evaluatedResult,
+        )
 
-            // set up to check for else-ifs and elses
-            const nextNode = arr.at(i + 1)
-            if (nextNode && ["elseif", "else"].includes(nextNode.tag)) {
-                conditionalTagsThatShouldTrigger.add(nextNode)
-            }
-
-            return []
-        }
-        if (n.tag === "else") {
-            return conditionalTagsThatShouldTrigger.has(n)
-                ? { tag: false, content: n.content }
-                : []
-        }
-
-        // switch/case tags
-        if (n.tag === "switch") {
-            if (!hasStringAttribute(n, "value"))
-                throw new Error("Switch tag must have a value attribute")
-
-            const evaluatedResult = indirectEval(n.attrs.value)
-
-            const caseChildren = onlyTags(normalizeContent(n.content)).filter(
-                n2 => n2.tag === "case",
-            )
-
-            const defaultCase = caseChildren.find(
-                n2 =>
-                    !hasStringAttribute(n2, "case") &&
-                    typeof n2.attrs?.default !== "undefined",
-            )
-
-            const winningCase = caseChildren.find(
-                n2 =>
-                    typeof n2.attrs?.default === "undefined" &&
-                    hasStringAttribute(n2, "case") &&
-                    indirectEval(n2.attrs.case) === evaluatedResult,
-            )
-
-            if (winningCase) return { tag: false, content: winningCase.content }
-            if (defaultCase) return { tag: false, content: defaultCase.content }
-            return []
-        }
-
-        return n
-    })
-
-    return newTree
-}
-
-/**
- * Walks the tree, executing the callback on each node.
- */
-export async function walk(
-    tree: Node[],
-    callback: (node: Node, i: number, arr: Node[]) => WalkReturn,
-): Promise<Node[]> {
-    return Promise.all(
-        tree.map(async (n, i, arr) => {
-            const cbResult = await callback(n, i, arr)
-
-            const cleaned = normalizeContent(cbResult)
-
-            // re-run arrays
-            if (Array.isArray(cbResult)) return walk(cleaned, callback)
-
-            // recurse into content
-            for (const n2 of onlyTags(cleaned)) {
-                n2.content = await walk(normalizeContent(n2.content), callback)
-            }
-
-            return cleaned
-        }),
-    ).then(tree => tree.flat())
-}
-
-/**
- * Walks the tree, only executing the callback on nodes that
- * are tags.
- */
-export async function walkTags(
-    tree: Node[],
-    callback: (
-        node: NodeTagWithTag,
-        i: number,
-        arr: NodeTagWithTag[],
-    ) => WalkReturn,
-) {
-    const filteredArrCache = new Map<Node[], NodeTagWithTag[]>()
-
-    return walk(tree, async (n, i, arr) => {
-        const qualifies = (n: Node): n is NodeTagWithTag =>
-            isTagNode(n) && typeof n.tag === "string" && !!n.tag
-
-        if (qualifies(n)) {
-            if (!filteredArrCache.has(arr))
-                filteredArrCache.set(arr, arr.filter(qualifies))
-            return callback(n, i, filteredArrCache.get(arr)!)
-        }
-
-        return n
-    })
-}
-
-/**
- * Walks the tree, only executing the callback on nodes with
- * the specified tag.
- */
-export async function walkByTag(
-    tree: Node[],
-    tag: string,
-    callback: (node: NodeTagWithTag) => WalkReturn,
-) {
-    return walkTags(tree, n => (n.tag === tag ? callback(n) : n))
-}
-
-/**
- * Flattens, removes nodes with falsy tags, etc. Useful for cleaning
- * up the various union types of posthtml-parser.
- */
-export function normalizeContent(
-    content: Node | Node[] | Content | undefined,
-): Node[] {
-    if (content == null) return []
-    return (Array.isArray(content) ? content.flat() : [content]).flatMap(n => {
-        if (isTagNode(n) && !n.tag) return normalizeContent(n.content ?? [])
-        return n
-    })
-}
-
-/**
- * Simple filter to ignore non-tag nodes. Doesn't traverse.
- */
-export function onlyTags(tree: Node[]) {
-    return tree.filter(isTagNode)
-}
-
-/**
- * Checks if a node is a tag node. Adds some extra type
- * safety.
- */
-export function isTagNode(node: Node): node is NodeTag {
-    return typeof node === "object"
-}
-
-/**
- * Checks if a node has a string attribute. Adds some extra
- * type safety.
- */
-export function hasStringAttribute<Attr extends string>(
-    node: Node,
-    attr: Attr,
-): node is Omit<NodeTag, "attrs"> & {
-    attrs: Record<Attr, string> & Attributes
-} {
-    return isTagNode(node) && typeof node.attrs?.[attr] === "string"
+        if (winningCase) copyAndReplace(el, winningCase.children)
+        else if (defaultCase) copyAndReplace(el, defaultCase.children)
+        else removeElement(el)
+    }
 }
 
 /**
@@ -523,8 +361,41 @@ function indirectEval(str: string) {
     return eval?.(`"use strict";\n${str}`)
 }
 
-type WalkReturn = Node | Node[] | Promise<Node | Node[]>
+function evaluateConditional(el: Element) {
+    if (!("condition" in el.attribs))
+        throw new Error("Conditional tag must have a condition attribute")
 
-type NodeTagWithTag = Omit<NodeTag, "tag"> & { tag: string }
+    const evaluatedResult = indirectEval(el.attribs.condition)
 
-export type { HTempCompileOptions }
+    // truthy case
+    if (evaluatedResult) {
+        // find & remove subsequent elseifs and elses
+        while (true) {
+            const nextSibling = nextElementSibling(el)
+            if (!nextSibling) break
+
+            if (
+                nextSibling.tagName === "elseif" ||
+                nextSibling.tagName === "else"
+            ) {
+                removeElement(nextSibling)
+                continue
+            }
+
+            break
+        }
+        copyAndReplace(el, el.children)
+        return
+    }
+
+    // falsy case
+    const nextSibling = nextElementSibling(el)
+    if (nextSibling) {
+        if (nextSibling.tagName === "elseif") evaluateConditional(nextSibling)
+        else if (nextSibling.tagName === "else")
+            copyAndReplace(nextSibling, nextSibling.children)
+    }
+    removeElement(el)
+}
+
+export type { HTmpCompileOptions }

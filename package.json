@@ -5,17 +5,16 @@
     "type": "module",
     "devDependencies": {
         "@biomejs/biome": "1.9.4",
-        "@types/bun": "latest",
-        "posthtml": "^0.16.6",
-        "posthtml-beautify": "^0.7.0"
+        "@types/bun": "latest"
     },
     "peerDependencies": {
-        "typescript": "^5.0.0",
-        "posthtml": "^0.16.6"
+        "typescript": "^5.0.0"
     },
     "dependencies": {
-        "posthtml-parser": "^0.12.1",
-        "posthtml-render": "^3.0.0",
+        "dom-serializer": "^2.0.0",
+        "domhandler": "^5.0.3",
+        "domutils": "^3.2.1",
+        "htmlparser2": "^10.0.0",
         "prettier": "^3.4.2"
     }
 }

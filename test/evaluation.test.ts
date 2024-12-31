@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test"
-import { HTempCompiler, normalizeContent, onlyTags, walkByTag } from ".."
+import { HTmpCompiler } from ".."
 import { parseHtml } from "../lib/parser"
-import { render } from "posthtml-render"
+import { isTag } from "domhandler"
 
-const hc = new HTempCompiler({
+const hc = new HTmpCompiler({
     componentsRoot: "./test/components",
     pretty: false,
 })
@@ -12,42 +12,36 @@ test("Attributes with evaluate prefix are computed as JavaScript", async () => {
     const html = await hc.compile(
         "<div eval:data-test=\"'hello' + 'world'\" />",
     )
-    const tree = onlyTags(parseHtml(html))
-    expect(tree[0].attrs).toHaveProperty("data-test", "helloworld")
+    const tree = (await parseHtml(html)).filter(isTag)
+    expect(tree[0].attribs).toHaveProperty("data-test", "helloworld")
 })
 
 test("Evaluated attributes convert non-string values to strings", async () => {
     const html = await hc.compile('<div eval:data-test="1 + 2" />')
-    const tree = onlyTags(parseHtml(html))
-    expect(tree[0].attrs).toHaveProperty("data-test", "3")
+    const tree = (await parseHtml(html)).filter(isTag)
+    expect(tree[0].attribs).toHaveProperty("data-test", "3")
 })
 
 test("Attributes evaluated to true are rendered as empty strings", async () => {
     const html = await hc.compile('<div eval:data-test="true" />')
-    const tree = onlyTags(parseHtml(html))
-    expect(tree[0].attrs).toHaveProperty("data-test", "")
+    const tree = (await parseHtml(html)).filter(isTag)
+    expect(tree[0].attribs).toHaveProperty("data-test", "")
 })
 
 test("Attributes evaluated to false are not rendered", async () => {
     const html = await hc.compile('<div eval:data-test="false" />')
-    const tree = onlyTags(parseHtml(html))
-    expect(tree[0].attrs).not.toHaveProperty("data-test")
+    const tree = (await parseHtml(html)).filter(isTag)
+    expect(tree[0].attribs).not.toHaveProperty("data-test")
 })
 
 test("Content inside %% %% is evaluated as JavaScript", async () => {
     const html = await hc.compile("<div>%%1 + 2%%</div>")
-    const innerHtml = render(
-        normalizeContent(onlyTags(parseHtml(html))[0].content),
-    )
-    expect(innerHtml).toBe("3")
+    expect(html).toBe("<div>3</div>")
 })
 
 test("Evaluated content works inline with other content", async () => {
     const html = await hc.compile("<div>I have %%1 + 2%% apples.</div>")
-    const innerHtml = render(
-        normalizeContent(onlyTags(parseHtml(html))[0].content),
-    )
-    expect(innerHtml).toBe("I have 3 apples.")
+    expect(html).toBe("<div>I have 3 apples.</div>")
 })
 
 test("False and nullish values are rendered as empty strings", async () => {
@@ -70,12 +64,13 @@ test("Evaluation happens before merging attributes", async () => {
             test: "<div eval:data-test='1+2' />",
         },
     })
-    const tree = onlyTags(parseHtml(html))
-    expect(tree[0].attrs).toHaveProperty("data-test", "8")
+    const tree = (await parseHtml(html)).filter(isTag)
+    expect(tree[0].attribs).toHaveProperty("data-test", "8")
 })
 
 test("Dynamic tags are computed", async () => {
     const html = await hc.compile("<dynamic tag=\"'div'\" />")
+    console.log(html)
     expect(html).toBe("<div></div>")
 })
 
@@ -129,13 +124,25 @@ test("Else-if chains work", async () => {
 
 test("Non-consecutive if/elseif/else tags are treated like different branches", async () => {
     const html = await hc.compile(
-        `<if condition='false'>TEST</if>
+        `<if condition='false'>TEST A</if>
         <div>Hello</div>
         <!-- These should be ignored -->
-        <elseif condition='true'>TEST</elseif>
-        <else>TEST</else>`,
+        <if condition='true'>TEST B</if>
+        <else>TEST C</else>`,
     )
-    expect(html).not.toContain("TEST")
+    expect(html).not.toContain("TEST A")
+    expect(html).toContain("TEST B")
+    expect(html).not.toContain("TEST C")
+})
+
+test("Hanging elseif tags throw an error", async () => {
+    const promise = hc.compile("<elseif />")
+    expect(promise).rejects.toThrow()
+})
+
+test("Hanging else tags throw an error", async () => {
+    const promise = hc.compile("<else />")
+    expect(promise).rejects.toThrow()
 })
 
 test("Switch-case rendering for matching case", async () => {

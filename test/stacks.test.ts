@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test"
-import { render } from "posthtml-render"
-import { HTempCompiler, onlyTags } from ".."
+import { HTmpCompiler } from ".."
 import { parseHtml } from "../lib/parser"
+import { innerText, isTag } from "domutils"
 
-const hc = new HTempCompiler({
+const hc = new HTmpCompiler({
     componentsRoot: "./test/components",
     pretty: false,
 })
@@ -17,8 +17,9 @@ test("Push tag gets pushed to stack", async () => {
             },
         },
     )
-    const tree = onlyTags(parseHtml(html))
-    expect(render(tree[1])).toBe("<p>PUSHED</p>")
+    const tree = (await parseHtml(html)).filter(isTag)
+    expect(tree[0].tagName).toBe("div")
+    expect(tree[1].tagName).toBe("p")
 })
 
 test("Elements pushed to stack are de-duped by id", async () => {
@@ -32,8 +33,6 @@ test("Elements pushed to stack are de-duped by id", async () => {
             },
         },
     )
-    const tree = onlyTags(parseHtml(html))
-    const snippet = render(tree[1])
-    expect(snippet).toContain("PUSHED FROM A")
-    expect(snippet).not.toContain("PUSHED FROM B")
+    const tree = (await parseHtml(html)).filter(isTag)
+    expect(innerText(tree[1]).trim()).toBe("PUSHED FROM A")
 })

@@ -1,25 +1,26 @@
 import { expect, test } from "bun:test"
-import { render } from "posthtml-render"
-import { HTempCompiler, onlyTags, walkByTag } from ".."
+import { innerText, isTag } from "domutils"
+import { HTmpCompiler } from ".."
 import { parseHtml } from "../lib/parser"
+import { findElement, findElements } from "../lib/utils"
 
-const hc = new HTempCompiler({
+const hc = new HTmpCompiler({
     componentsRoot: "./test/components",
     pretty: false,
 })
 
 test("Components are loaded from files", async () => {
     const html = await hc.compile("<x-box />")
-    expect(html).toBe("<div></div>")
+    expect(html).toBe("<div>Hello!</div>")
 })
 
 test("Components are loaded from override object", async () => {
     const html = await hc.compile("<x-test />", {
         components: {
-            test: "<p></p>",
+            test: "<p>Test</p>",
         },
     })
-    expect(html).toBe("<p></p>")
+    expect(html).toBe("<p>Test</p>")
 })
 
 test("Components loaded from override object are converted from camelCase to kebab-case", async () => {
@@ -47,8 +48,9 @@ test("Component can insert multiple nodes", async () => {
             test: "<p></p><div></div><section></section>",
         },
     })
-    const tree = onlyTags(parseHtml(html))
-    expect(tree).toHaveLength(3)
+
+    const elements = findElements(await parseHtml(html))
+    expect(elements).toHaveLength(3)
 })
 
 test("Component yields content", async () => {
@@ -110,10 +112,10 @@ test("Attributes are passed to first tag when attr is not present", async () => 
             test: "<p></p><p></p>",
         },
     })
-    const tree = onlyTags(parseHtml(html))
+    const elements = findElements(await parseHtml(html))
 
-    expect(tree[0].attrs).toHaveProperty("data-test", "TEST")
-    expect(tree[1].attrs).not.toHaveProperty("data-test")
+    expect(elements[0].attribs).toHaveProperty("data-test", "TEST")
+    expect(elements[1].attribs).not.toHaveProperty("data-test")
 })
 
 test("Text nodes are ignored when passing attributes in default manner", async () => {
@@ -122,10 +124,10 @@ test("Text nodes are ignored when passing attributes in default manner", async (
             test: "Hello<p></p><p></p>",
         },
     })
-    const tree = onlyTags(parseHtml(html))
+    const elements = findElements(await parseHtml(html))
 
-    expect(tree[0].attrs).toHaveProperty("data-test", "TEST")
-    expect(tree[1].attrs).not.toHaveProperty("data-test")
+    expect(elements[0].attribs).toHaveProperty("data-test", "TEST")
+    expect(elements[1].attribs).not.toHaveProperty("data-test")
 })
 
 test("Attributes are passed to element with attr", async () => {
@@ -134,10 +136,10 @@ test("Attributes are passed to element with attr", async () => {
             test: "<p></p><p attr></p>",
         },
     })
-    const tree = onlyTags(parseHtml(html))
+    const elements = findElements(await parseHtml(html))
 
-    expect(tree[0].attrs).not.toHaveProperty("data-test")
-    expect(tree[1].attrs).toHaveProperty("data-test", "TEST")
+    expect(elements[0].attribs).not.toHaveProperty("data-test")
+    expect(elements[1].attribs).toHaveProperty("data-test", "TEST")
 })
 
 test("Attributes are passed to attribute slots", async () => {
@@ -146,17 +148,13 @@ test("Attributes are passed to attribute slots", async () => {
             test: "<div><p attr='inner'></p></div>",
         },
     })
-    const tree = parseHtml(html)
+    const tree = await parseHtml(html)
 
-    await walkByTag(tree, "div", n => {
-        expect(n.attrs).not.toHaveProperty("data-test")
-        return n
-    })
+    const div = findElement(tree, "div")
+    expect(div?.attribs).not.toHaveProperty("data-test")
 
-    await walkByTag(tree, "p", n => {
-        expect(n.attrs).toHaveProperty("data-test", "TEST")
-        return n
-    })
+    const p = findElement(tree, "p")
+    expect(p?.attribs).toHaveProperty("data-test", "TEST")
 })
 
 test("Attributes passed to attribute slots can have colons in them", async () => {
@@ -165,40 +163,35 @@ test("Attributes passed to attribute slots can have colons in them", async () =>
             test: "<div><p attr='inner'></p></div>",
         },
     })
-    const tree = parseHtml(html)
+    const tree = await parseHtml(html)
 
-    await walkByTag(tree, "p", n => {
-        expect(n.attrs).toHaveProperty(":class", "TEST")
-        return n
-    })
+    const p = findElement(tree, "p")
+    expect(p?.attribs).toHaveProperty(":class", "TEST")
 })
 
 test("Slots work", async () => {
     const html = await hc.compile(
         `<x-test>
-            <fill:paragraph>PARAGRAPH</fill:paragraph>
-            <fill:foot>FOOTER</fill:foot>
-        </x-test>`,
+                <fill slot=paragraph>PARAGRAPH</fill>
+                <fill slot=foot>FOOTER</fill>
+            </x-test>`,
         {
             components: {
                 test: `<div>
-                    <p><slot:paragraph /></p>
-                    <footer><slot:foot /></footer>
-                </div>`,
+                        <p><slot name=paragraph /></p>
+                        <footer><slot name=foot /></footer>
+                    </div>`,
             },
         },
     )
-    const tree = parseHtml(html)
 
-    await walkByTag(tree, "p", n => {
-        const snippet = render(n).replaceAll(/\s+/g, "")
-        expect(snippet).toBe("<p>PARAGRAPH</p>")
-        return n
-    })
+    const tree = await parseHtml(html)
 
-    await walkByTag(tree, "footer", n => {
-        const snippet = render(n).replaceAll(/\s+/g, "")
-        expect(snippet).toBe("<footer>FOOTER</footer>")
-        return n
-    })
+    const p = findElement(tree, "p")
+    expect(p).toBeDefined()
+    expect(innerText(p!).trim()).toBe("PARAGRAPH")
+
+    const footer = findElement(tree, "footer")
+    expect(footer).toBeDefined()
+    expect(innerText(footer!).trim()).toBe("FOOTER")
 })
