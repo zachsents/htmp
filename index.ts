@@ -97,8 +97,10 @@ async function processNode(
     }
 
     // conditional tags
-    // TODO: revisit this to make sure offsets are re-run
-    if (node.tagName === "if") evaluateConditional(node)
+    if (node.tagName === "if") {
+        evaluateConditional(node)
+        return
+    }
 
     // now any leftover conditionals are errored
     if (node.tagName === "elseif") throw new Error("Unexpected elseif")
