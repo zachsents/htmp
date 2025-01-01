@@ -7,18 +7,17 @@
         "type": "git",
         "url": "git+https://github.com/zachsents/htmp.git"
     },
-    "module": "dist/index.js",
-    "types": "dist/index.d.ts",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
     "type": "module",
     "scripts": {
         "lint": "biome check",
-        "build": "bun run build.ts",
+        "build": "tsc --project tsconfig.build.json",
         "prepublishOnly": "bun run build"
     },
     "devDependencies": {
         "@biomejs/biome": "1.9.4",
-        "@types/bun": "latest",
-        "bun-plugin-dts": "^0.3.0"
+        "@types/bun": "latest"
     },
     "peerDependencies": {
         "typescript": "^5.0.0"

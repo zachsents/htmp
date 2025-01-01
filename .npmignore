@@ -5,4 +5,4 @@ test
 .gitignore
 bun.lockb
 biome.jsonc
-build.ts
+tsconfig.build.json
