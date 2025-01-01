@@ -15,6 +15,13 @@ export interface HTmpCompileOptions {
      */
     componentTagPrefix?: string
     /**
+     * The tag to use for components specified by name attribute.
+     * An alternative to using the x- prefix pattern. Useful
+     * for dynamically loading components.
+     * Defaults to "component"
+     */
+    componentTag?: string
+    /**
      * The tag to use for yields.
      * Defaults to "yield"
      */
@@ -101,6 +108,7 @@ export function getDefaultOptions(
         components: passedComponents = {},
         componentsRoot = "./components",
         componentTagPrefix = "x-",
+        componentTag = "component",
         yieldTag = "yield",
         pretty = true,
         attrAttribute = "attr",
@@ -149,6 +157,7 @@ export function getDefaultOptions(
         components,
         componentsRoot,
         componentTagPrefix,
+        componentTag,
         yieldTag,
         pretty,
         attrAttribute,

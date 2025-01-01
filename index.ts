@@ -206,10 +206,26 @@ export class HTmpCompiler {
         }
 
         // components
-        if (node.tagName.startsWith(this.options.componentTagPrefix)) {
-            const componentName = node.tagName.slice(
-                this.options.componentTagPrefix.length,
-            )
+        const isComponentByPrefix = node.tagName.startsWith(
+            this.options.componentTagPrefix,
+        )
+        const isComponentByTag = node.tagName === this.options.componentTag
+        if (isComponentByPrefix || isComponentByTag) {
+            let componentName: string
+
+            if (isComponentByTag) {
+                if (!("name" in node.attribs))
+                    throw new Error("Component tag must have a name attribute")
+                componentName = node.attribs.name
+                delete node.attribs.name
+            } else if (isComponentByPrefix) {
+                componentName = node.tagName.slice(
+                    this.options.componentTagPrefix.length,
+                )
+            } else {
+                // illegal state
+                throw new Error("Invalid component tag")
+            }
 
             // load into component cache
             if (!(componentName in this.options.components)) {

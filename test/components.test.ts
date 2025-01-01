@@ -348,3 +348,27 @@ test("Custom merge strategies can use Regex patterns", async () => {
     expect(div!.attribs).toHaveProperty("a2", "")
     expect(div!.attribs).toHaveProperty("b5", "")
 })
+
+test("Component tag inserts component specified by name attribute", async () => {
+    const html = await new HTmpCompiler({
+        ...globalOpts,
+        components: {
+            test: "<div>Hello</div>",
+        },
+    }).compile("<component name='test' />")
+
+    console.log()
+
+    expect(html).toBe("<div>Hello</div>")
+})
+
+test("Component tag works with eval: attribute computation", async () => {
+    const html = await new HTmpCompiler({
+        ...globalOpts,
+        components: {
+            test: "<div>Hello</div>",
+        },
+    }).compile("<component eval:name=\"'test'\" />")
+
+    expect(html).toBe("<div>Hello</div>")
+})
