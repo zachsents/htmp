@@ -1,5 +1,5 @@
 import render from "dom-serializer"
-import { DomHandler, type AnyNode, type ChildNode } from "domhandler"
+import { type AnyNode, type ChildNode, DomHandler } from "domhandler"
 import { Parser } from "htmlparser2"
 
 export async function parseHtml(html: string): Promise<ChildNode[]> {

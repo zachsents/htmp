@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { HTmpCompiler } from ".."
+import { HTmpCompiler } from "../src"
 
 const hc = new HTmpCompiler({
     componentsRoot: "./test/components",

@@ -1,7 +1,12 @@
 import { expect, test } from "bun:test"
-import { type Element, isTag, isText, type Text } from "domhandler"
-import { parseHtml } from "../lib/parser"
-import { findElement, findElements, findNode, findNodes } from "../lib/utils"
+import { type Element, type Text, isTag, isText } from "domhandler"
+import { parseHtml } from "../src/lib/parser"
+import {
+    findElement,
+    findElements,
+    findNode,
+    findNodes,
+} from "../src/lib/utils"
 
 const testFragment = "<div><p>Hello</p><b>World</b></div>"
 

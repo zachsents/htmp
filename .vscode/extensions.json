@@ -1,6 +1,3 @@
 {
-    "recommendations": [
-        "biomejs.biome",
-        "sandy081.todotasks"
-    ]
+    "recommendations": ["biomejs.biome", "sandy081.todotasks"]
 }

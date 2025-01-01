@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { innerText, isTag } from "domutils"
-import { HTmpCompiler, type HTmpCompileOptions } from ".."
-import { parseHtml } from "../lib/parser"
+import { type HTmpCompileOptions, HTmpCompiler } from "../src"
+import { parseHtml } from "../src/lib/parser"
 
 const globalOpts: HTmpCompileOptions = {
     componentsRoot: "./test/components",

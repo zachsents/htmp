@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test"
 import { innerText } from "domutils"
-import { HTmpCompiler, type HTmpCompileOptions } from ".."
-import { parseHtml } from "../lib/parser"
-import { findElement, findElements } from "../lib/utils"
+import { type HTmpCompileOptions, HTmpCompiler } from "../src"
+import { parseHtml } from "../src/lib/parser"
+import { findElement, findElements } from "../src/lib/utils"
 
 const globalOpts: HTmpCompileOptions = {
     componentsRoot: "./test/components",

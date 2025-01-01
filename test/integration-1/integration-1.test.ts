@@ -1,5 +1,5 @@
-import { HTmpCompiler } from "../.."
 import { expect, test } from "bun:test"
+import { HTmpCompiler } from "../../src"
 
 test("Integration test 1", async () => {
     const html = await new HTmpCompiler({

@@ -1,0 +1,8 @@
+.vscode
+src
+test
+.git
+.gitignore
+bun.lockb
+biome.jsonc
+build.ts
