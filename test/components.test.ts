@@ -128,7 +128,7 @@ test("Multiple yields work", async () => {
     expect(html.split("MULTI")).toHaveLength(3)
 })
 
-test("Component not found throws useful error", async () => {
+test("Component not found throws useful error (prefix-mode)", async () => {
     const promise = new HTmpCompiler({ ...globalOpts }).compile(
         "<x-not-real />",
     )
@@ -136,7 +136,18 @@ test("Component not found throws useful error", async () => {
     // useful message
     expect(promise).rejects.toThrow("Component not found")
     // names tag explicitly
-    expect(promise).rejects.toThrow("x-not-real")
+    expect(promise).rejects.toThrow("not-real")
+})
+
+test("Component not found throws useful error (tag-mode)", async () => {
+    const promise = new HTmpCompiler({ ...globalOpts }).compile(
+        "<component name='not-real' />",
+    )
+
+    // useful message
+    expect(promise).rejects.toThrow("Component not found")
+    // names tag explicitly
+    expect(promise).rejects.toThrow("not-real")
 })
 
 test("Attributes are passed to first tag when attr is not present", async () => {

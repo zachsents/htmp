@@ -247,7 +247,7 @@ export class HTmpCompiler {
                     })
                     .catch(err => {
                         if (!isENOENT(err)) throw err
-                        throw new Error(`Component not found: ${node.tagName}`)
+                        throw new Error(`Component not found: ${componentName}`)
                     })
 
                 this.options.components[componentName] = componentContent
