@@ -185,8 +185,7 @@ export class HTmpCompiler {
                     )
 
                 const evaluatedArray = runInNewContext(node.attribs.in, scope)
-
-                if (!(Symbol.iterator in evaluatedArray))
+                if (!Array.isArray(evaluatedArray))
                     throw new Error(
                         "For tag in attribute must evaluate to an array",
                     )
@@ -248,9 +247,18 @@ export class HTmpCompiler {
                 get(target, key, receiver) {
                     if (typeof key === "string") {
                         if (key in target) return target[key]
-                        if (key in node.attribs) {
-                            target[key] = node.attribs[key]
-                            delete node.attribs[key]
+
+                        const evalFlag = key.startsWith("$")
+                        const varName = evalFlag ? key.slice(1) : key
+
+                        if (varName in node.attribs) {
+                            target[key] = evalFlag
+                                ? runInNewContext(
+                                      node.attribs[varName],
+                                      Object.create(scope),
+                                  )
+                                : node.attribs[varName]
+                            delete node.attribs[varName]
                             return target[key]
                         }
                     }

@@ -1,0 +1,11 @@
+<script server>
+    items = props.$items ?? []
+</script>
+<ul>
+    <for
+        item="item"
+        in="items"
+    >
+        <li>%% item %%</li>
+    </for>
+</ul>
