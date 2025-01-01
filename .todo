@@ -12,8 +12,8 @@
 ✔ Add expressions (+tests) @done (12/29/2024, 1:21:25 PM)
     ✔ Dynamic attributes (+tests) @done (12/29/2024, 1:21:21 PM)
     ✔ Dynamic content (+tests) @done (12/29/2024, 1:21:22 PM)
-☐ Add props to components (+tests)
+✔ Add props to components (+tests) @done (12/31/2024, 7:59:43 PM)
 ✔ Optional wrapper tag @done (12/29/2024, 3:07:21 PM)
 ✔ Conditional tags @done (12/30/2024, 9:15:43 AM)
-☐ Loop tags
+✔ Loop tags @done (12/31/2024, 7:59:38 PM)
 ☐ Make class and style attributes merge differently

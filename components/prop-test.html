@@ -1,0 +1,14 @@
+<script server>
+    innerLocal = "this is an inner local"
+    prop = props.a ?? "default prop value"
+</script>
+<div>
+    Hello!
+    <yield />
+    <p>
+        %% innerLocal %%
+    </p>
+    <p>
+        %% prop %%
+    </p>
+</div>

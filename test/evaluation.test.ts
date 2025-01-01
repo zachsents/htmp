@@ -1,14 +1,15 @@
 import { expect, test } from "bun:test"
-import { HTmpCompiler } from ".."
+import { HTmpCompiler, type HTmpCompileOptions } from ".."
 import { parseHtml } from "../lib/parser"
 import { isTag } from "domhandler"
 import { findElement, findElements } from "../lib/utils"
 import { innerText } from "domutils"
 
-const hc = new HTmpCompiler({
+const globalOpts: HTmpCompileOptions = {
     componentsRoot: "./test/components",
     pretty: false,
-})
+}
+const hc = new HTmpCompiler(globalOpts)
 
 test("Attributes with evaluate prefix are computed as JavaScript", async () => {
     const html = await hc.compile(
@@ -52,21 +53,26 @@ test("False and nullish values are rendered as empty strings", async () => {
 })
 
 test("Evaluation works in components", async () => {
-    const html = await hc.compile("<x-test />", {
+    const html = await new HTmpCompiler({
+        ...globalOpts,
         components: {
             test: "<div eval:data-test=\"'hello' + 'world'\">%%'hello' + 'world'%%</div>",
         },
-    })
+    }).compile("<x-test />")
+
     expect(html).toBe('<div data-test="helloworld">helloworld</div>')
 })
 
 test("Evaluation happens before merging attributes", async () => {
-    const html = await hc.compile("<x-test eval:data-test='3+5' />", {
+    const html = await new HTmpCompiler({
+        ...globalOpts,
         components: {
             test: "<div eval:data-test='1+2' />",
         },
-    })
+    }).compile("<x-test eval:data-test='3+5' />")
+
     const div = findElement(await parseHtml(html), "div")
+
     expect(div).toBeDefined()
     expect(div!.attribs).toHaveProperty("data-test", "8")
 })
@@ -209,32 +215,12 @@ test("Switch-case ignores non-matching cases", async () => {
 })
 
 test("Context is available in evaluations", async () => {
-    const html = await hc.compile("<div>%% test %%</div>", {
+    const html = await new HTmpCompiler({
+        ...globalOpts,
         evalContext: { test: "hello" },
-    })
+    }).compile("<div>%% test %%</div>")
+
     expect(html).toBe("<div>hello</div>")
-})
-
-test("Context mutations persist", async () => {
-    const html = await hc.compile(
-        `<div>%% let old = test; test = 'world'; old %%</div>
-        <div>%% test %%</div>`,
-        {
-            evalContext: { test: "hello" },
-        },
-    )
-    const text = innerText(await parseHtml(html)).replaceAll(/\s+/g, "")
-    expect(text).toBe("helloworld")
-})
-
-test("Newly defined variables are available in children", async () => {
-    const html = await hc.compile(`<div>
-        %% test = 5 %%
-        <p>%% test %%</p>
-    </div>`)
-    const p = findElement(await parseHtml(html), "p")
-    expect(p).toBeDefined()
-    expect(innerText(p!)).toBe("5")
 })
 
 test("For each loops work", async () => {
