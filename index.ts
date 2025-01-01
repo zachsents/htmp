@@ -84,7 +84,7 @@ export class HTmpCompiler {
                 continue
 
             delete node.attribs[k]
-            const evaluatedResult = runInNewContext(v, this.options.evalContext)
+            const evaluatedResult = runInNewContext(v, scope)
 
             // skip if result is false or null
             if (evaluatedResult === false || evaluatedResult == null) continue
@@ -157,10 +157,8 @@ export class HTmpCompiler {
                     caseEl =>
                         "case" in caseEl.attribs &&
                         !("default" in caseEl.attribs) &&
-                        runInNewContext(
-                            caseEl.attribs.case,
-                            this.options.evalContext,
-                        ) === evaluatedResult,
+                        runInNewContext(caseEl.attribs.case, scope) ===
+                            evaluatedResult,
                 ) ?? defaultCase
 
             if (!winningCase) {
@@ -245,28 +243,31 @@ export class HTmpCompiler {
 
             const innerComponentScope = Object.create(scope)
 
-            innerComponentScope.props = new Proxy({} as Record<string, unknown>, {
-                get(target, key, receiver) {
-                    if (typeof key === "string") {
-                        if (key in target) return target[key]
+            innerComponentScope.props = new Proxy(
+                {} as Record<string, unknown>,
+                {
+                    get(target, key, receiver) {
+                        if (typeof key === "string") {
+                            if (key in target) return target[key]
 
-                        const evalFlag = key.startsWith("$")
-                        const varName = evalFlag ? key.slice(1) : key
+                            const evalFlag = key.startsWith("$")
+                            const varName = evalFlag ? key.slice(1) : key
 
-                        if (varName in node.attribs) {
-                            target[key] = evalFlag
-                                ? runInNewContext(
-                                      node.attribs[varName],
-                                      Object.create(scope),
-                                  )
-                                : node.attribs[varName]
-                            delete node.attribs[varName]
-                            return target[key]
+                            if (varName in node.attribs) {
+                                target[key] = evalFlag
+                                    ? runInNewContext(
+                                          node.attribs[varName],
+                                          Object.create(scope),
+                                      )
+                                    : node.attribs[varName]
+                                delete node.attribs[varName]
+                                return target[key]
+                            }
                         }
-                    }
-                    return Reflect.get(target, key, receiver)
+                        return Reflect.get(target, key, receiver)
+                    },
                 },
-            })
+            )
 
             const serverScripts = componentTree.filter(
                 n =>
