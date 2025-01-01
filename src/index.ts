@@ -22,9 +22,15 @@ export class HTmpCompiler {
         this.options = getDefaultOptions(options)
     }
 
-    async compile(html: string) {
+    async compile(
+        html: string,
+        additionalEvalContext?: Record<string, unknown>,
+    ) {
         const tree = await parseHtml(html)
-        await this.processTree(tree)
+        await this.processTree(tree, {
+            ...this.options.evalContext,
+            ...additionalEvalContext,
+        })
         this.processStacks(tree)
 
         let renderedHtml = renderHtml(tree)
@@ -40,10 +46,7 @@ export class HTmpCompiler {
         return renderedHtml
     }
 
-    async processTree(
-        tree: AnyNode[],
-        scope: object = this.options.evalContext,
-    ) {
+    async processTree(tree: AnyNode[], scope: object) {
         let cursor = 0
         while (tree[cursor]) {
             if (this.options.debug)
