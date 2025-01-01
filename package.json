@@ -1,6 +1,10 @@
 {
     "name": "@zachsents/htmp",
     "description": "The HTML template backend for simplified, modern web development.",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/zachsents/htmp.git"
+    },
     "author": "Zach Sents",
     "module": "index.ts",
     "type": "module",
