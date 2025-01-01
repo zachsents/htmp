@@ -2,7 +2,7 @@
     "name": "@zachsents/htmp",
     "description": "The HTML template backend for simplified, modern web development.",
     "author": "Zach Sents",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "repository": {
         "type": "git",
         "url": "git+https://github.com/zachsents/htmp.git"

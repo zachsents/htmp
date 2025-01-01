@@ -14,6 +14,13 @@ test("Components are loaded from files", async () => {
     expect(html).toBe("<div>Hello!</div>")
 })
 
+test("Components can be loaded from an index file in a directory", async () => {
+    const html = await new HTmpCompiler({ ...globalOpts }).compile(
+        "<x-folder />",
+    )
+    expect(html).toBe("<div>folder</div>")
+})
+
 test("Components are loaded from override object", async () => {
     const html = await new HTmpCompiler({
         ...globalOpts,

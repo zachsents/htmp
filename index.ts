@@ -215,35 +215,37 @@ export class HTmpCompiler {
 
             // load into component cache
             if (!(componentName in this.options.components)) {
-                const componentPath = path.join(
+                const directFilePath = path.join(
                     this.options.componentsRoot,
                     `${componentName.replaceAll(".", path.sep)}.html`,
                 )
-                try {
-                    const componentContent = await fs.readFile(
-                        componentPath,
-                        "utf8",
-                    )
-                    this.options.components[componentName] = componentContent
-                } catch (err) {
-                    if (
-                        typeof err === "object" &&
-                        err != null &&
-                        "code" in err &&
-                        err.code === "ENOENT"
-                    )
+
+                const indexFilePath = path.join(
+                    this.options.componentsRoot,
+                    `${componentName.replaceAll(".", path.sep)}/index.html`,
+                )
+
+                const componentContent = await fs
+                    .readFile(directFilePath, "utf8")
+                    .catch(err => {
+                        if (!isENOENT(err)) throw err
+                        return fs.readFile(indexFilePath, "utf8")
+                    })
+                    .catch(err => {
+                        if (!isENOENT(err)) throw err
                         throw new Error(`Component not found: ${node.tagName}`)
-                    throw err
-                }
+                    })
+
+                this.options.components[componentName] = componentContent
             }
 
             const componentTree = await parseHtml(
                 this.options.components[componentName],
             )
 
-            const serverScriptScope = Object.create(scope)
+            const innerComponentScope = Object.create(scope)
 
-            serverScriptScope.props = new Proxy({} as Record<string, unknown>, {
+            innerComponentScope.props = new Proxy({} as Record<string, unknown>, {
                 get(target, key, receiver) {
                     if (typeof key === "string") {
                         if (key in target) return target[key]
@@ -271,13 +273,13 @@ export class HTmpCompiler {
                     isTag(n) && n.tagName === "script" && "server" in n.attribs,
             )
             for (const scriptEl of serverScripts) {
-                runInNewContext(innerText(scriptEl), serverScriptScope)
+                runInNewContext(innerText(scriptEl), innerComponentScope)
                 removeElement(scriptEl)
             }
 
-            delete serverScriptScope.props
+            delete innerComponentScope.props
 
-            await this.processTree(componentTree, serverScriptScope)
+            await this.processTree(componentTree, innerComponentScope)
 
             // organize attributes into a map
             const attrMap: Record<string, Record<string, string>> = {}
@@ -512,6 +514,15 @@ function colonMatch(
               isMatch: false,
               segments: [],
           }
+}
+
+function isENOENT(err: unknown): err is ErrnoException {
+    return (
+        typeof err === "object" &&
+        err != null &&
+        "code" in err &&
+        err.code === "ENOENT"
+    )
 }
 
 export type { HTmpCompileOptions }
