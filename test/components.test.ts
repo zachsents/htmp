@@ -282,3 +282,62 @@ test("Props work", async () => {
 
     expect(html.trim()).toBe("<div>test</div>")
 })
+
+test("Class attributes are merged by concatenating by default", async () => {
+    const html = await new HTmpCompiler({
+        ...globalOpts,
+        components: {
+            test: `<div class="b">Hello</div>`,
+        },
+    }).compile("<x-test class='a' />")
+
+    const tree = await parseHtml(html)
+    const div = findElement(tree, "div")
+    expect(div).toBeDefined()
+    expect(div!.attribs).toHaveProperty("class", "b a")
+})
+
+test("Style attributes are merged by concatenating by default", async () => {
+    const html = await new HTmpCompiler({
+        ...globalOpts,
+        components: {
+            test: `<div style="color: red;">Hello</div>`,
+        },
+    }).compile("<x-test style='color: blue;' />")
+
+    const tree = await parseHtml(html)
+    const div = findElement(tree, "div")
+    expect(div).toBeDefined()
+    expect(div!.attribs).toHaveProperty("style", "color: red; color: blue;")
+})
+
+test("Default custom merge strategies can be overridden", async () => {
+    const html = await new HTmpCompiler({
+        ...globalOpts,
+        components: {
+            test: `<div class="b">Hello</div>`,
+        },
+        attributeMergeStrategies: [{ name: "class", merge: (_, val) => val }],
+    }).compile("<x-test class='a' />")
+
+    const tree = await parseHtml(html)
+    const div = findElement(tree, "div")
+    expect(div).toBeDefined()
+    expect(div!.attribs).toHaveProperty("class", "a")
+})
+
+test("Custom merge strategies can use Regex patterns", async () => {
+    const html = await new HTmpCompiler({
+        ...globalOpts,
+        components: {
+            test: "<div a2=x b5=y>Hello</div>",
+        },
+        attributeMergeStrategies: [{ pattern: /[a-z]\d/, merge: () => "" }],
+    }).compile("<x-test a2=a b5=b />")
+
+    const tree = await parseHtml(html)
+    const div = findElement(tree, "div")
+    expect(div).toBeDefined()
+    expect(div!.attribs).toHaveProperty("a2", "")
+    expect(div!.attribs).toHaveProperty("b5", "")
+})

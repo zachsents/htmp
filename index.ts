@@ -75,7 +75,25 @@ export class HTmpCompiler {
         if (!isTag(node)) return 1
 
         // evaluate attributes
-        this.evaluateAttributes(node)
+        for (const [k, v] of Object.entries(node.attribs)) {
+            const { isMatch, segments } = colonMatch(2, k)
+            if (
+                !isMatch ||
+                segments[0] !== this.options.evaluateAttributePrefix
+            )
+                continue
+
+            delete node.attribs[k]
+            const evaluatedResult = runInNewContext(v, this.options.evalContext)
+
+            // skip if result is false or null
+            if (evaluatedResult === false || evaluatedResult == null) continue
+
+            // true is an empty but included attribute
+            if (evaluatedResult === true) node.attribs[segments[1]] = ""
+            // otherwise, just try to make it a string
+            else node.attribs[segments[1]] = `${evaluatedResult}`
+        }
 
         // dynamic tags
         if (node.tagName === this.options.dynamicTag) {
@@ -278,7 +296,7 @@ export class HTmpCompiler {
                 if (attrVal === "") foundDefaultAttributeTarget = true
                 delete innerEl.attribs[this.options.attrAttribute]
                 if (attrMap[attrVal]) {
-                    Object.assign(innerEl.attribs, attrMap[attrVal])
+                    this.assignAttributesToElement(innerEl, attrMap[attrVal])
                 }
             }
 
@@ -290,7 +308,9 @@ export class HTmpCompiler {
                         n.tagName !== "script" &&
                         n.tagName !== "style",
                 )
-                if (firstTag) Object.assign(firstTag.attribs, attrMap[""])
+                if (firstTag) {
+                    this.assignAttributesToElement(firstTag, attrMap[""])
+                }
             }
 
             // recurse into content
@@ -347,28 +367,6 @@ export class HTmpCompiler {
 
         await this.processTree(node.children, scope)
         return 1
-    }
-
-    evaluateAttributes(node: Element) {
-        for (const [k, v] of Object.entries(node.attribs)) {
-            const { isMatch, segments } = colonMatch(2, k)
-            if (
-                !isMatch ||
-                segments[0] !== this.options.evaluateAttributePrefix
-            )
-                continue
-
-            delete node.attribs[k]
-            const evaluatedResult = runInNewContext(v, this.options.evalContext)
-
-            // skip if result is false or null
-            if (evaluatedResult === false || evaluatedResult == null) continue
-
-            // true is an empty but included attribute
-            if (evaluatedResult === true) node.attribs[segments[1]] = ""
-            // otherwise, just try to make it a string
-            else node.attribs[segments[1]] = `${evaluatedResult}`
-        }
     }
 
     async processConditional(el: Element, scope: object): Promise<number> {
@@ -461,6 +459,23 @@ export class HTmpCompiler {
             for (const child of stackInfo[stackEl.attribs.name]?.content ?? [])
                 prepend(stackEl, child.cloneNode(true))
             removeElement(stackEl)
+        }
+    }
+
+    assignAttributesToElement(
+        target: Element,
+        sourceAttributes: Record<string, string>,
+    ) {
+        for (const [k, v] of Object.entries(sourceAttributes)) {
+            let mergeFn = this.options.attributeMergeStrategies.find(
+                s => "name" in s && s.name === k,
+            )?.merge
+            mergeFn ??= this.options.attributeMergeStrategies.find(
+                s => "pattern" in s && s.pattern.test(k),
+            )?.merge
+            mergeFn ??= (_, val) => val
+
+            target.attribs[k] = mergeFn(target.attribs[k], v)
         }
     }
 

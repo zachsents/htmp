@@ -75,13 +75,30 @@ export interface HTmpCompileOptions {
      * Debug option. Prints the compiled step after every iteration.
      */
     debug?: boolean
+    /**
+     * Custom attribute merging strategies.
+     */
+    attributeMergeStrategies?:
+        | Array<
+              (
+                  | {
+                        pattern: RegExp
+                    }
+                  | {
+                        name: string
+                    }
+              ) & {
+                  merge: (originalValue: string, newValue: string) => string
+              }
+          >
+        | undefined
 }
 
 export function getDefaultOptions(
     passedOptions: HTmpCompileOptions,
 ): Required<HTmpCompileOptions> {
     const {
-        components = {},
+        components: passedComponents = {},
         componentsRoot = "./components",
         componentTagPrefix = "x-",
         yieldTag = "yield",
@@ -96,11 +113,12 @@ export function getDefaultOptions(
         dynamicTag = "dynamic",
         evalContext = {},
         debug = false,
+        attributeMergeStrategies: passedAttributeMergeStrategies = [],
     } = passedOptions
 
     // convert components to kebab case
-    const convertedComponents = Object.fromEntries(
-        Object.entries(components).map(([k, v]) => {
+    const components = Object.fromEntries(
+        Object.entries(passedComponents).map(([k, v]) => {
             let newKey =
                 k.match(/[a-z]+|[A-Z][a-z]+|[A-Z]+|\d+/g)?.join("-") ?? k
             newKey = newKey.toLowerCase()
@@ -108,8 +126,27 @@ export function getDefaultOptions(
         }),
     )
 
+    // include default attribute merge strategies
+    const attributeMergeStrategies = [...passedAttributeMergeStrategies]
+    if (!attributeMergeStrategies.some(s => "name" in s && s.name === "class"))
+        attributeMergeStrategies.push({
+            name: "class",
+            merge: (a, b) => `${a} ${b}`,
+        })
+    if (!attributeMergeStrategies.some(s => "name" in s && s.name === "style"))
+        attributeMergeStrategies.push({
+            name: "style",
+            merge: (a, b) => {
+                let newA = a.trim()
+                if (!a.endsWith(";")) newA += ";"
+                let newB = b.trim()
+                if (!b.endsWith(";")) newB += ";"
+                return `${newA} ${newB}`
+            },
+        })
+
     return {
-        components: convertedComponents,
+        components,
         componentsRoot,
         componentTagPrefix,
         yieldTag,
@@ -124,5 +161,6 @@ export function getDefaultOptions(
         dynamicTag,
         evalContext,
         debug,
+        attributeMergeStrategies,
     }
 }
