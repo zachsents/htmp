@@ -1,3 +1,6 @@
+import fs from "node:fs/promises"
+import path from "node:path"
+import { runInNewContext } from "node:vm"
 import type { AnyNode, Element } from "domhandler"
 import {
     innerText,
@@ -7,9 +10,6 @@ import {
     prepend,
     removeElement,
 } from "domutils"
-import fs from "node:fs/promises"
-import path from "node:path"
-import { runInNewContext } from "node:vm"
 import * as prettier from "prettier"
 import { type HTmpCompileOptions, getDefaultOptions } from "./lib/options"
 import { parseHtml, renderHtml } from "./lib/parser"
