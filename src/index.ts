@@ -1,7 +1,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { runInNewContext } from "node:vm"
-import type { AnyNode, Element } from "domhandler"
+import type { AnyNode, ChildNode, Element } from "domhandler"
 import {
     innerText,
     isTag,
@@ -473,7 +473,7 @@ export class HTmpCompiler {
         const stackInfo: Record<
             string,
             {
-                content: AnyNode[]
+                content: ChildNode[]
                 ids: Set<string>
             }
         > = {}
@@ -494,6 +494,7 @@ export class HTmpCompiler {
                 }
                 stackInfo[stackName].content.push(child)
             }
+            removeElement(pushEl)
         }
 
         // then insert the pushed content into the stack
