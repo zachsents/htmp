@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { unlink } from "node:fs/promises"
 import { Glob } from "bun"
 import { innerText } from "domutils"
 import { type HTmpCompileOptions, HTmpCompiler } from "../src"
@@ -424,4 +425,21 @@ test("Component preloading works", async () => {
     const cacheNames = Array.from(compiler.componentCache.keys()).sort()
 
     expect(cacheNames).toEqual(actualComponentNames)
+})
+
+test("Option to disable component caching works", async () => {
+    const compiler = new HTmpCompiler({
+        ...globalOpts,
+        cacheComponents: false,
+    })
+
+    const fileName = "test/components/cache-test.html"
+
+    await Bun.write(fileName, Math.random().toString(16).slice(2))
+    const html1 = await compiler.compile("<x-cache-test />")
+    await Bun.write(fileName, Math.random().toString(16).slice(2))
+    const html2 = await compiler.compile("<x-cache-test />")
+    await unlink(fileName)
+
+    expect(html1).not.toBe(html2)
 })

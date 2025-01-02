@@ -22,6 +22,11 @@ export interface HTmpCompileOptions {
      */
     componentTag?: string
     /**
+     * Whether or not to cache components loaded from files.
+     * Defaults to true
+     */
+    cacheComponents?: boolean
+    /**
      * The tag to use for yields.
      * Defaults to "yield"
      */
@@ -112,6 +117,7 @@ export function getDefaultOptions(
         componentsRoot = "./components",
         componentTagPrefix = "x-",
         componentTag = "component",
+        cacheComponents = true,
         yieldTag = "yield",
         pretty = true,
         attrAttribute = "attr",
@@ -151,6 +157,7 @@ export function getDefaultOptions(
         componentsRoot,
         componentTagPrefix,
         componentTag,
+        cacheComponents,
         yieldTag,
         pretty,
         attrAttribute,

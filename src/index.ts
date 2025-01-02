@@ -17,18 +17,21 @@ import { findElements } from "./lib/utils"
 
 export class HTmpCompiler {
     private options: Required<HTmpCompileOptions>
+    private passedComponents: Record<string, string>
     private componentCache: Map<string, string> = new Map()
 
     constructor(options: HTmpCompileOptions = {}) {
         this.options = getDefaultOptions(options)
 
-        // convert components to kebab case and store in cache
-        for (const [k, v] of Object.entries(this.options.components)) {
-            let newKey =
-                k.match(/[a-z]+|[A-Z][a-z]+|[A-Z]+|\d+/g)?.join("-") ?? k
-            newKey = newKey.toLowerCase()
-            this.componentCache.set(newKey, v)
-        }
+        // convert components to kebab case and store
+        this.passedComponents = Object.fromEntries(
+            Object.entries(this.options.components).map(([k, v]) => {
+                let newKey =
+                    k.match(/[a-z]+|[A-Z][a-z]+|[A-Z]+|\d+/g)?.join("-") ?? k
+                newKey = newKey.toLowerCase()
+                return [newKey, v] as const
+            }),
+        )
     }
 
     public async compile(
@@ -242,8 +245,21 @@ export class HTmpCompiler {
                 throw new Error("Invalid component tag")
             }
 
-            // load into component cache
-            if (!this.componentCache.has(componentName)) {
+            let componentFileContent: string
+
+            // first see if the component was passed in the constructor
+            if (componentName in this.passedComponents) {
+                componentFileContent = this.passedComponents[componentName]
+            }
+            // either pull from cache
+            else if (
+                this.options.cacheComponents &&
+                this.componentCache.has(componentName)
+            ) {
+                componentFileContent = this.componentCache.get(componentName)!
+            }
+            // or load from file
+            else {
                 const directFilePath = path.join(
                     this.options.componentsRoot,
                     `${componentName.replaceAll(".", path.sep)}.html`,
@@ -254,7 +270,7 @@ export class HTmpCompiler {
                     `${componentName.replaceAll(".", path.sep)}/index.html`,
                 )
 
-                const componentContent = await fs
+                componentFileContent = await fs
                     .readFile(directFilePath, "utf8")
                     .catch(err => {
                         if (!isENOENT(err)) throw err
@@ -265,12 +281,11 @@ export class HTmpCompiler {
                         throw new Error(`Component not found: ${componentName}`)
                     })
 
-                this.componentCache.set(componentName, componentContent)
+                if (this.options.cacheComponents)
+                    this.componentCache.set(componentName, componentFileContent)
             }
 
-            const componentTree = await parseHtml(
-                this.componentCache.get(componentName)!,
-            )
+            const componentTree = await parseHtml(componentFileContent)
 
             const innerComponentScope = Object.create(scope)
 

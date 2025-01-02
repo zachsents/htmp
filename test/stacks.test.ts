@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test"
-import { innerText, isTag } from "domutils"
 import { type HTmpCompileOptions, HTmpCompiler } from "../src"
 import { parseHtml } from "../src/lib/parser"
 import { findElements } from "../src/lib/utils"
