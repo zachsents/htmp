@@ -95,7 +95,10 @@ export interface HTmpCompileOptions {
                         name: string
                     }
               ) & {
-                  merge: (originalValue: string, newValue: string) => string
+                  merge: (
+                      originalValue: string | undefined,
+                      newValue: string,
+                  ) => string | boolean | undefined | null
               }
           >
         | undefined
@@ -129,17 +132,17 @@ export function getDefaultOptions(
     if (!attributeMergeStrategies.some(s => "name" in s && s.name === "class"))
         attributeMergeStrategies.push({
             name: "class",
-            merge: (a, b) => `${a} ${b}`,
+            merge: (a, b) => `${a ?? ""} ${b}`.trim(),
         })
     if (!attributeMergeStrategies.some(s => "name" in s && s.name === "style"))
         attributeMergeStrategies.push({
             name: "style",
             merge: (a, b) => {
-                let newA = a.trim()
-                if (!a.endsWith(";")) newA += ";"
+                let newA = a?.trim() ?? ""
+                if (!newA.endsWith(";")) newA += ";"
                 let newB = b.trim()
-                if (!b.endsWith(";")) newB += ";"
-                return `${newA} ${newB}`
+                if (!newB.endsWith(";")) newB += ";"
+                return `${newA} ${newB}`.trim()
             },
         })
 

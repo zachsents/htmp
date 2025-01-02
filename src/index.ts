@@ -520,7 +520,12 @@ export class HTmpCompiler {
             )?.merge
             mergeFn ??= (_, val) => val
 
-            target.attribs[k] = mergeFn(target.attribs[k], v)
+            const mergeResult = mergeFn(target.attribs[k], v)
+
+            if (typeof mergeResult === "string") target.attribs[k] = mergeResult
+            else if (typeof mergeResult === "boolean" && mergeResult)
+                target.attribs[k] = ""
+            else delete target.attribs[k]
         }
     }
 
