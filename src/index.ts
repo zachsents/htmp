@@ -3,7 +3,6 @@ import path from "node:path"
 import { runInNewContext } from "node:vm"
 import { type AnyNode, type ChildNode, Element } from "domhandler"
 import {
-    appendChild,
     innerText,
     isTag,
     isText,
@@ -15,7 +14,7 @@ import {
 import * as prettier from "prettier"
 import { type HTmpCompileOptions, getDefaultOptions } from "./lib/options"
 import { parseHtml, renderHtml } from "./lib/parser"
-import { findElements } from "./lib/utils"
+import { findElement, findElements } from "./lib/utils"
 
 export class HTmpCompiler {
     private options: Required<HTmpCompileOptions>
@@ -46,6 +45,7 @@ export class HTmpCompiler {
             ...additionalEvalContext,
         })
         this.processStacks(tree)
+        this.processTitles(tree)
 
         let renderedHtml = renderHtml(tree)
 
@@ -523,67 +523,69 @@ export class HTmpCompiler {
                 prepend(stackEl, child.cloneNode(true))
             removeElement(stackEl)
         }
+    }
 
-        // move titles to head
-        // handle full documents -- probably only one but handle all
-        const htmlEls = findElements(tree, "html")
-        for (const htmlEl of htmlEls) {
-            const body = htmlEl.children.find(
-                (el): el is Element => isTag(el) && el.tagName === "body",
-            )
-            if (!body) continue
-
-            // find deepest title
-            const getDepth = (el: Element): number => {
-                let current = el
-                let depth = 0
-                while (current.parent !== body) {
-                    current = current.parent as Element
-                    depth++
-                }
-                return depth
+    private processTitles(tree: AnyNode[]) {
+        const htmlEl = findElement(tree, "html")
+        if (!htmlEl) {
+            // partial document
+            switch (this.options.titleBehaviorInPartial) {
+                case "preserve":
+                    break
+                case "remove":
+                    for (const titleEl of findElements(tree, "title"))
+                        removeElement(titleEl)
+                    break
+                default:
+                    throw new Error(
+                        `Invalid titleBehaviorInPartial option: ${this.options.titleBehaviorInPartial}`,
+                    )
             }
 
-            let deepestTitle: Element | undefined
-            let deepestDepth = -Infinity
-
-            for (const titleEl of findElements(body.children, "title")) {
-                const depth = getDepth(titleEl)
-                if (depth >= deepestDepth) {
-                    deepestTitle = titleEl
-                    deepestDepth = depth
-                }
-                removeElement(titleEl)
-            }
-
-            if (!deepestTitle) continue
-
-            const existingHead = htmlEl.children.find(
-                (el): el is Element => isTag(el) && el.tagName === "head",
-            )
-
-            if (existingHead) {
-                for (const existingTitle of findElements(
-                    existingHead.children,
-                    "title",
-                ))
-                    removeElement(existingTitle)
-                appendChild(existingHead, deepestTitle.cloneNode(true))
-            } else {
-                prependChild(
-                    htmlEl,
-                    new Element("head", {}, [deepestTitle.cloneNode(true)]),
-                )
-            }
+            return
         }
 
-        // optionally remove titles in partial documents
-        if (
-            this.options.titleBehaviorInPartial === "remove" &&
-            htmlEls.length === 0
-        ) {
-            for (const titleEl of findElements(tree, "title"))
-                removeElement(titleEl)
+        // full document -- move title to head
+        const body = htmlEl.children.find(
+            (el): el is Element => isTag(el) && el.tagName === "body",
+        )
+        if (!body) return
+
+        // find deepest title in body
+        const [deepestTitle] = findElements(body.children, "title").reduce<
+            [Element | undefined, number]
+        >(
+            (acc, cur) => {
+                let depth = 0
+                let currentParent = cur.parent
+                while (currentParent && currentParent !== body) {
+                    currentParent = currentParent.parent
+                    depth++
+                }
+                removeElement(cur)
+                return depth >= acc[1] ? [cur, depth] : acc
+            },
+            [undefined, -Infinity],
+        )
+
+        if (!deepestTitle) return
+
+        const existingHead = htmlEl.children.find(
+            (el): el is Element => isTag(el) && el.tagName === "head",
+        )
+
+        if (existingHead) {
+            for (const existingTitle of findElements(
+                existingHead.children,
+                "title",
+            ))
+                removeElement(existingTitle)
+            prependChild(existingHead, deepestTitle.cloneNode(true))
+        } else {
+            prependChild(
+                htmlEl,
+                new Element("head", {}, [deepestTitle.cloneNode(true)]),
+            )
         }
     }
 
