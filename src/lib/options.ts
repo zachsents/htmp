@@ -107,6 +107,13 @@ export interface HTmpCompileOptions {
               }
           >
         | undefined
+    /**
+     * What to do with title tags found in the document when rendering
+     * partial documents. This is useful for HTMX, because it handles
+     * adding the document title.
+     * Defaults to "preserve"
+     */
+    titleBehaviorInPartial?: "preserve" | "remove"
 }
 
 export function getDefaultOptions(
@@ -131,6 +138,7 @@ export function getDefaultOptions(
         evalContext = {},
         debug = false,
         attributeMergeStrategies: passedAttributeMergeStrategies = [],
+        titleBehaviorInPartial = "preserve",
     } = passedOptions
 
     // include default attribute merge strategies
@@ -171,5 +179,6 @@ export function getDefaultOptions(
         evalContext,
         debug,
         attributeMergeStrategies,
+        titleBehaviorInPartial,
     }
 }

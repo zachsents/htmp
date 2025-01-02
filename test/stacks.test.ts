@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test"
+import { selectOne } from "css-select"
+import { innerText, isTag } from "domutils"
 import { type HTmpCompileOptions, HTmpCompiler } from "../src"
 import { parseHtml } from "../src/lib/parser"
-import { findElements } from "../src/lib/utils"
+import { findElement, findElements } from "../src/lib/utils"
 
 const globalOpts: HTmpCompileOptions = {
     componentsRoot: "./test/components",
@@ -62,4 +64,81 @@ test("Multiple stacks with the same name can be pushed to", async () => {
     expect(findElements(tree, "p")).toHaveLength(4)
     expect(findElements(tree, "push")).toHaveLength(0)
     expect(findElements(tree, "stack")).toHaveLength(0)
+})
+
+test("Move title to head when rendering full document", async () => {
+    const html = await new HTmpCompiler(globalOpts).compile(`
+        <html>
+            <head />
+            <body>
+                <title>Hello</title>
+            </body>
+        </html>
+    `)
+
+    const tree = await parseHtml(html)
+    const title = selectOne("html > head > title", tree)
+    expect(title).toBeTruthy()
+    expect(innerText(title!)).toBe("Hello")
+})
+
+test("Titles in body take precedence over titles in head", async () => {
+    const html = await new HTmpCompiler(globalOpts).compile(`
+        <html>
+            <head>
+                <title>Original</title>
+            </head>
+            <body>
+                <title>New</title>
+            </body>
+        </html>
+    `)
+
+    const tree = await parseHtml(html)
+    const title = selectOne("html > head > title", tree)
+    expect(title).toBeTruthy()
+    expect(innerText(title!)).toBe("New")
+})
+
+test("Deepest title takes precedence", async () => {
+    const html = await new HTmpCompiler(globalOpts).compile(`
+        <html>
+            <head>
+                <title>Original</title>
+            </head>
+            <body>
+                <title>New</title>
+                <div>
+                    <title>Newer</title>
+                </div>
+            </body>
+        </html>
+    `)
+
+    const tree = await parseHtml(html)
+    const title = selectOne("html > head > title", tree)
+    expect(title).toBeTruthy()
+    expect(innerText(title!)).toBe("Newer")
+})
+
+test("Titles are left in place when rendering partial document (option)", async () => {
+    const html = await new HTmpCompiler({
+        ...globalOpts,
+        titleBehaviorInPartial: "preserve",
+    }).compile("<title>Hello</title>")
+
+    const tree = await parseHtml(html)
+    const title = selectOne("title", tree)
+    expect(title).toBeTruthy()
+})
+
+test("Titles are removed when rendering partial document (option)", async () => {
+    const html = await new HTmpCompiler({
+        ...globalOpts,
+        titleBehaviorInPartial: "remove",
+    }).compile("<title>Hello</title>")
+
+    const tree = await parseHtml(html)
+    const title = selectOne("title", tree)
+    expect(title).toBeFalsy()
 })

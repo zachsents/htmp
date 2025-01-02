@@ -2,7 +2,7 @@
     "name": "@zachsents/htmp",
     "description": "The HTML template backend for simplified, modern web development.",
     "author": "Zach Sents",
-    "version": "0.0.8",
+    "version": "0.0.9",
     "repository": {
         "type": "git",
         "url": "git+https://github.com/zachsents/htmp.git"
@@ -21,7 +21,8 @@
     "devDependencies": {
         "@biomejs/biome": "1.9.4",
         "@types/bun": "latest",
-        "@types/node": "^22.10.3"
+        "@types/node": "^22.10.3",
+        "css-select": "^5.1.0"
     },
     "peerDependencies": {
         "typescript": "^5.0.0"
