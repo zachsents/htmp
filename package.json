@@ -2,13 +2,16 @@
     "name": "@zachsents/htmp",
     "description": "The HTML template backend for simplified, modern web development.",
     "author": "Zach Sents",
-    "version": "0.0.4",
+    "version": "0.0.5",
     "repository": {
         "type": "git",
         "url": "git+https://github.com/zachsents/htmp.git"
     },
     "module": "./dist/index.js",
     "types": "./dist/index.d.ts",
+    "publishConfig": {
+        "access": "public"
+    },
     "type": "module",
     "scripts": {
         "lint": "biome check",
@@ -17,7 +20,8 @@
     },
     "devDependencies": {
         "@biomejs/biome": "1.9.4",
-        "@types/bun": "latest"
+        "@types/bun": "latest",
+        "@types/node": "^22.10.3"
     },
     "peerDependencies": {
         "typescript": "^5.0.0"

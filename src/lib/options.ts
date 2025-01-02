@@ -105,7 +105,7 @@ export function getDefaultOptions(
     passedOptions: HTmpCompileOptions,
 ): Required<HTmpCompileOptions> {
     const {
-        components: passedComponents = {},
+        components = {},
         componentsRoot = "./components",
         componentTagPrefix = "x-",
         componentTag = "component",
@@ -123,16 +123,6 @@ export function getDefaultOptions(
         debug = false,
         attributeMergeStrategies: passedAttributeMergeStrategies = [],
     } = passedOptions
-
-    // convert components to kebab case
-    const components = Object.fromEntries(
-        Object.entries(passedComponents).map(([k, v]) => {
-            let newKey =
-                k.match(/[a-z]+|[A-Z][a-z]+|[A-Z]+|\d+/g)?.join("-") ?? k
-            newKey = newKey.toLowerCase()
-            return [newKey, v] as const
-        }),
-    )
 
     // include default attribute merge strategies
     const attributeMergeStrategies = [...passedAttributeMergeStrategies]

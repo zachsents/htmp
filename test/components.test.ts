@@ -3,6 +3,7 @@ import { innerText } from "domutils"
 import { type HTmpCompileOptions, HTmpCompiler } from "../src"
 import { parseHtml } from "../src/lib/parser"
 import { findElement, findElements } from "../src/lib/utils"
+import { Glob } from "bun"
 
 const globalOpts: HTmpCompileOptions = {
     componentsRoot: "./test/components",
@@ -382,4 +383,45 @@ test("Component tag works with eval: attribute computation", async () => {
     }).compile("<component eval:name=\"'test'\" />")
 
     expect(html).toBe("<div>Hello</div>")
+})
+
+test("Additional eval context passed to compile is available in components", async () => {
+    const html = await new HTmpCompiler({
+        ...globalOpts,
+        components: {
+            test: "<div>%% a %% %% b %%</div>",
+        },
+        evalContext: {
+            a: "hello",
+        },
+    }).compile("<x-test />", {
+        b: "world",
+    })
+
+    expect(html).toBe("<div>hello world</div>")
+})
+
+test("Component preloading works", async () => {
+    const compiler = new HTmpCompiler(globalOpts)
+    // @ts-ignore
+    expect(compiler.componentCache.size).toBe(0)
+
+    const actualComponentNames = await Array.fromAsync(
+        new Glob("**/*.html").scan(globalOpts.componentsRoot),
+    ).then(arr =>
+        arr
+            .map(f =>
+                f
+                    .replace(/\.html$/, "")
+                    .replace(/[\\\/]index$/, "")
+                    .replaceAll(/[\\\/]/g, "."),
+            )
+            .sort(),
+    )
+
+    await compiler.preloadComponents()
+    // @ts-ignore
+    const cacheNames = Array.from(compiler.componentCache.keys()).sort()
+
+    expect(cacheNames).toEqual(actualComponentNames)
 })

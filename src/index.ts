@@ -1,6 +1,3 @@
-import fs from "node:fs/promises"
-import path from "node:path"
-import { runInNewContext } from "node:vm"
 import type { AnyNode, Element } from "domhandler"
 import {
     innerText,
@@ -10,6 +7,9 @@ import {
     prepend,
     removeElement,
 } from "domutils"
+import fs from "node:fs/promises"
+import path from "node:path"
+import { runInNewContext } from "node:vm"
 import * as prettier from "prettier"
 import { type HTmpCompileOptions, getDefaultOptions } from "./lib/options"
 import { parseHtml, renderHtml } from "./lib/parser"
@@ -17,12 +17,21 @@ import { findElements } from "./lib/utils"
 
 export class HTmpCompiler {
     private options: Required<HTmpCompileOptions>
+    private componentCache: Map<string, string> = new Map()
 
     constructor(options: HTmpCompileOptions = {}) {
         this.options = getDefaultOptions(options)
+
+        // convert components to kebab case and store in cache
+        for (const [k, v] of Object.entries(this.options.components)) {
+            let newKey =
+                k.match(/[a-z]+|[A-Z][a-z]+|[A-Z]+|\d+/g)?.join("-") ?? k
+            newKey = newKey.toLowerCase()
+            this.componentCache.set(newKey, v)
+        }
     }
 
-    async compile(
+    public async compile(
         html: string,
         additionalEvalContext?: Record<string, unknown>,
     ) {
@@ -46,7 +55,7 @@ export class HTmpCompiler {
         return renderedHtml
     }
 
-    async processTree(tree: AnyNode[], scope: object) {
+    private async processTree(tree: AnyNode[], scope: object) {
         let cursor = 0
         while (tree[cursor]) {
             if (this.options.debug)
@@ -56,7 +65,10 @@ export class HTmpCompiler {
         }
     }
 
-    async processNode(node: AnyNode, prototypeScope: object): Promise<number> {
+    private async processNode(
+        node: AnyNode,
+        prototypeScope: object,
+    ): Promise<number> {
         const scope = Object.create(prototypeScope)
 
         if (isText(node)) {
@@ -231,7 +243,7 @@ export class HTmpCompiler {
             }
 
             // load into component cache
-            if (!(componentName in this.options.components)) {
+            if (!this.componentCache.has(componentName)) {
                 const directFilePath = path.join(
                     this.options.componentsRoot,
                     `${componentName.replaceAll(".", path.sep)}.html`,
@@ -253,11 +265,11 @@ export class HTmpCompiler {
                         throw new Error(`Component not found: ${componentName}`)
                     })
 
-                this.options.components[componentName] = componentContent
+                this.componentCache.set(componentName, componentContent)
             }
 
             const componentTree = await parseHtml(
-                this.options.components[componentName],
+                this.componentCache.get(componentName)!,
             )
 
             const innerComponentScope = Object.create(scope)
@@ -399,7 +411,10 @@ export class HTmpCompiler {
         return 1
     }
 
-    async processConditional(el: Element, scope: object): Promise<number> {
+    private async processConditional(
+        el: Element,
+        scope: object,
+    ): Promise<number> {
         let doesMatch = false
 
         if (el.tagName === "if" || el.tagName === "elseif") {
@@ -454,7 +469,7 @@ export class HTmpCompiler {
             : 0
     }
 
-    processStacks(tree: AnyNode[]) {
+    private processStacks(tree: AnyNode[]) {
         const stackInfo: Record<
             string,
             {
@@ -492,7 +507,7 @@ export class HTmpCompiler {
         }
     }
 
-    assignAttributesToElement(
+    private assignAttributesToElement(
         target: Element,
         sourceAttributes: Record<string, string>,
     ) {
@@ -509,8 +524,48 @@ export class HTmpCompiler {
         }
     }
 
-    async pretty(html: string) {
+    private async pretty(html: string) {
         return await prettier.format(html, { parser: "html" })
+    }
+
+    public async preloadComponents() {
+        const loadComponents = async (
+            dir = this.options.componentsRoot,
+            segments: string[] = [],
+            startingDir = dir,
+        ) => {
+            const fileEntries = await fs.readdir(dir, { withFileTypes: true })
+
+            await Promise.all(
+                fileEntries.map(async entry => {
+                    if (entry.isDirectory())
+                        return loadComponents(
+                            path.join(dir, entry.name),
+                            [...segments, entry.name],
+                            startingDir,
+                        )
+
+                    if (!entry.isFile()) return
+
+                    const nameMatch = entry.name.match(/^([\w\-]+)\.html$/)
+                    if (!nameMatch) return
+
+                    const content = await fs.readFile(
+                        path.join(dir, entry.name),
+                        "utf8",
+                    )
+
+                    const componentName =
+                        nameMatch[1] === "index" && dir !== startingDir
+                            ? segments.join(".")
+                            : [...segments, nameMatch[1]].join(".")
+
+                    this.componentCache.set(componentName, content)
+                }),
+            )
+        }
+
+        await loadComponents()
     }
 }
 
