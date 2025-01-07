@@ -1,7 +1,13 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { runInNewContext } from "node:vm"
-import { type AnyNode, type ChildNode, Element } from "domhandler"
+import {
+    type AnyNode,
+    type ChildNode,
+    Document,
+    Element,
+    cloneNode,
+} from "domhandler"
 import {
     innerText,
     isTag,
@@ -213,10 +219,13 @@ export class HTmpCompiler {
 
                 for (const item of evaluatedArray) {
                     scope[node.attribs.item] = item
-                    const innerTree = node.children.map(n => n.cloneNode(true))
-                    await this.processTree(innerTree, scope)
-                    totalChildCount += innerTree.length
-                    for (const child of innerTree) prepend(node, child)
+                    const innerTree = new Document(
+                        cloneNode(node, true).children,
+                    )
+                    await this.processTree(innerTree.children, scope)
+                    totalChildCount += innerTree.children.length
+                    while (innerTree.firstChild)
+                        prepend(node, innerTree.firstChild)
                 }
                 removeElement(node)
                 return totalChildCount

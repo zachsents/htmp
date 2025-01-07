@@ -443,3 +443,21 @@ test("Option to disable component caching works", async () => {
 
     expect(html1).not.toBe(html2)
 })
+
+test("Components work as direct children of for loop", async () => {
+    const html = await new HTmpCompiler({
+        ...globalOpts,
+        components: {
+            test: "<div>Hello</div>",
+        },
+    }).compile(
+        `
+        <for item="item" in="items">
+            <x-test />
+        </for>`,
+        { items: ["a", "b", "c"] },
+    )
+
+    const tree = await parseHtml(html)
+    expect(findElements(tree, "div")).toHaveLength(3)
+})
